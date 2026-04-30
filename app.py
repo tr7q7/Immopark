@@ -5,11 +5,13 @@ import hashlib
 import secrets
 import smtplib
 import ssl
+import time
 import pandas as pd
 import plotly.express as px
 from email.message import EmailMessage
 
 DATA_FILE = "lmnp_data.json"
+SESSION_DURATION = 3600
 
 st.set_page_config(
     page_title="LMNP Cashflow",
@@ -290,8 +292,18 @@ data = load_data()
 if "logged_user" not in st.session_state:
     st.session_state.logged_user = None
 
+if "login_time" not in st.session_state:
+    st.session_state.login_time = None
+
 if "reset_email" not in st.session_state:
     st.session_state.reset_email = None
+
+if st.session_state.logged_user is not None and st.session_state.login_time is not None:
+    if time.time() - st.session_state.login_time > SESSION_DURATION:
+        st.session_state.logged_user = None
+        st.session_state.login_time = None
+        st.warning("Session expirée. Reconnecte-toi.")
+        st.rerun()
 
 st.title("LMNP Cashflow")
 
@@ -326,6 +338,7 @@ if st.session_state.logged_user is None:
                 }
                 save_data(data)
                 st.session_state.logged_user = email
+                st.session_state.login_time = time.time()
                 st.rerun()
 
     elif mode == "Connexion":
@@ -341,6 +354,7 @@ if st.session_state.logged_user is None:
                 st.error("Mot de passe incorrect.")
             else:
                 st.session_state.logged_user = email
+                st.session_state.login_time = time.time()
                 st.rerun()
 
     elif mode == "Mot de passe oublié":
@@ -408,6 +422,7 @@ with st.container():
     st.markdown('<div class="top-right-button">', unsafe_allow_html=True)
     if st.button("Déconnexion"):
         st.session_state.logged_user = None
+        st.session_state.login_time = None
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
