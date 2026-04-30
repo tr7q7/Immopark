@@ -6,18 +6,45 @@ st.set_page_config(
     layout="wide"
 )
 
+st.markdown("""
+<style>
+    div[data-testid="stNumberInput"] input {
+        font-size: 28px !important;
+        height: 60px !important;
+        text-align: center !important;
+    }
+
+    div[data-testid="stNumberInput"] label {
+        font-size: 18px !important;
+        font-weight: 600 !important;
+    }
+
+    button {
+        height: 55px !important;
+        font-size: 18px !important;
+    }
+
+    div[data-testid="stMetricValue"] {
+        font-size: 34px !important;
+    }
+
+    .block-container {
+        padding-top: 1rem;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 st.title("🏠 Suivi cashflow LMNP")
 
-# Initialisation
 if "biens" not in st.session_state:
     st.session_state.biens = ["Bien 1"]
 
-# Bouton nouvel onglet
 if st.button("➕ Nouvelle Gestion"):
     nouveau_nom = f"Bien {len(st.session_state.biens) + 1}"
     st.session_state.biens.append(nouveau_nom)
 
-# Création des onglets
 tabs = st.tabs(st.session_state.biens)
 
 for i, tab in enumerate(tabs):
@@ -25,19 +52,22 @@ for i, tab in enumerate(tabs):
         st.subheader(st.session_state.biens[i])
 
         st.markdown("### Revenus")
+
         loyer = st.number_input(
             "Loyer perçu mensuel (€)",
             min_value=0.0,
             step=10.0,
+            format="%.2f",
             key=f"loyer_{i}"
         )
 
-        st.markdown("### Charges mensuelles")
+        st.markdown("### Charges")
 
         taxe_fonciere_annuelle = st.number_input(
             "Taxe foncière annuelle (€)",
             min_value=0.0,
             step=50.0,
+            format="%.2f",
             key=f"taxe_{i}"
         )
 
@@ -45,6 +75,7 @@ for i, tab in enumerate(tabs):
             "Charges de copropriété mensuelles (€)",
             min_value=0.0,
             step=10.0,
+            format="%.2f",
             key=f"copro_{i}"
         )
 
@@ -52,6 +83,7 @@ for i, tab in enumerate(tabs):
             "Électricité mensuelle (€)",
             min_value=0.0,
             step=10.0,
+            format="%.2f",
             key=f"electricite_{i}"
         )
 
@@ -59,6 +91,7 @@ for i, tab in enumerate(tabs):
             "Gaz mensuel (€)",
             min_value=0.0,
             step=10.0,
+            format="%.2f",
             key=f"gaz_{i}"
         )
 
@@ -66,6 +99,7 @@ for i, tab in enumerate(tabs):
             "Crédit mensuel (€)",
             min_value=0.0,
             step=10.0,
+            format="%.2f",
             key=f"credit_{i}"
         )
 
@@ -73,6 +107,7 @@ for i, tab in enumerate(tabs):
             "Assurance mensuelle (€)",
             min_value=0.0,
             step=5.0,
+            format="%.2f",
             key=f"assurance_{i}"
         )
 
@@ -80,6 +115,7 @@ for i, tab in enumerate(tabs):
             "Imprévu mensuel (€)",
             min_value=0.0,
             step=10.0,
+            format="%.2f",
             key=f"imprevu_{i}"
         )
 
