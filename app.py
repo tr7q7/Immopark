@@ -451,16 +451,15 @@ if len(biens) > 1:
             for nom_charge, montant in charges.items():
                 charges_globales[nom_charge] = charges_globales.get(nom_charge, 0) + montant
 
-        rendement_global = ((total_cashflow * 12) / total_prix_achat * 100) if total_prix_achat > 0 else 0
+        ratio_global = ((total_cashflow * 12) / total_prix_achat * 100) if total_prix_achat > 0 else 0
 
         afficher_cashflow(total_cashflow, "Cashflow global mensuel")
+
+        afficher_metric("Cashflow annuel / prix d'achat total", f"{ratio_global:.2f} %")
 
         afficher_metric("Loyer mensuel", format_euro(total_loyer))
         afficher_metric("Loyer annuel", format_euro(total_loyer * 12))
         afficher_metric("Charges mensuelles", format_euro(total_charges))
-
-        if total_prix_achat > 0:
-            afficher_metric("Cashflow annuel / prix total", f"{rendement_global:.2f} %")
 
         df_charges = pd.DataFrame({
             "Charge": list(charges_globales.keys()),
