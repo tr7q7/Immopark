@@ -35,6 +35,7 @@ div[data-testid="stVerticalBlock"] {
     gap: 0.05rem !important;
 }
 
+/* FORCE 2 COLONNES */
 div[data-testid="stHorizontalBlock"] {
     display: flex !important;
     flex-direction: row !important;
@@ -44,22 +45,29 @@ div[data-testid="stHorizontalBlock"] {
 
 div[data-testid="column"] {
     width: 50% !important;
-    min-width: 0 !important;
-    flex: 0 0 calc(50% - 0.15rem) !important;
+    flex: 0 0 50% !important;
+    padding: 0 !important;
+}
+
+/* RÉDUCTION LARGEUR INPUT */
+.stTextInput > div {
+    display: flex;
+    justify-content: center;
+}
+
+.stTextInput input {
+    width: 60% !important;
+    max-width: 90px !important;
+    height: 30px !important;
+    font-size: 15px !important;
+    text-align: center !important;
     padding: 0 !important;
 }
 
 label {
     font-size: 10px !important;
     font-weight: 600 !important;
-    line-height: 1 !important;
-}
-
-input {
-    height: 30px !important;
-    font-size: 15px !important;
-    text-align: center !important;
-    padding: 0 2px !important;
+    text-align: center;
 }
 
 .stTextInput {
@@ -96,12 +104,7 @@ div[data-testid="stCaptionContainer"] {
 
 
 def montant(label, key):
-    val = st.text_input(
-        label,
-        value="",
-        placeholder="€",
-        key=key
-    )
+    val = st.text_input(label, value="", placeholder="€", key=key)
     val = val.replace(",", ".")
     try:
         return float(val) if val else 0.0
@@ -149,7 +152,7 @@ tabs = st.tabs(st.session_state.biens)
 
 for i, tab in enumerate(tabs):
     with tab:
-        loyer = montant("Loyer perçu", f"loyer_{i}")
+        loyer = montant("Loyer", f"loyer_{i}")
 
         credit_prev = to_float(st.session_state.get(f"credit_{i}", ""))
         assurance_prev = to_float(st.session_state.get(f"assurance_{i}", ""))
@@ -171,12 +174,12 @@ for i, tab in enumerate(tabs):
 
         afficher_cashflow(loyer - total_prev)
 
-        col1, col2 = st.columns([1, 1], gap="small")
+        col1, col2 = st.columns(2, gap="small")
 
         with col1:
             credit = montant("Crédit", f"credit_{i}")
-            taxe_annuelle = montant("Taxe foncière", f"taxe_{i}")
-            electricite = montant("Électricité", f"electricite_{i}")
+            taxe_annuelle = montant("Taxe", f"taxe_{i}")
+            electricite = montant("Élec", f"electricite_{i}")
             imprevu = montant("Imprévu", f"imprevu_{i}")
 
         with col2:
