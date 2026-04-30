@@ -8,14 +8,20 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    div[data-testid="stNumberInput"] input {
-        font-size: 28px !important;
-        height: 60px !important;
+    .block-container {
+        padding-top: 1rem;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    input {
+        font-size: 26px !important;
+        height: 58px !important;
         text-align: center !important;
     }
 
-    div[data-testid="stNumberInput"] label {
-        font-size: 18px !important;
+    label {
+        font-size: 17px !important;
         font-weight: 600 !important;
     }
 
@@ -27,14 +33,26 @@ st.markdown("""
     div[data-testid="stMetricValue"] {
         font-size: 34px !important;
     }
-
-    .block-container {
-        padding-top: 1rem;
-        padding-left: 1rem;
-        padding-right: 1rem;
-    }
 </style>
 """, unsafe_allow_html=True)
+
+
+def montant(label, key):
+    valeur = st.text_input(
+        label,
+        value="",
+        placeholder="Ex : 850",
+        key=key
+    )
+
+    valeur = valeur.replace(",", ".")
+
+    try:
+        return float(valeur) if valeur else 0.0
+    except ValueError:
+        st.warning(f"Montant invalide : {label}")
+        return 0.0
+
 
 st.title("🏠 Suivi cashflow LMNP")
 
@@ -53,69 +71,45 @@ for i, tab in enumerate(tabs):
 
         st.markdown("### Revenus")
 
-        loyer = st.number_input(
+        loyer = montant(
             "Loyer perçu mensuel (€)",
-            min_value=0.0,
-            step=10.0,
-            format="%.2f",
             key=f"loyer_{i}"
         )
 
         st.markdown("### Charges")
 
-        taxe_fonciere_annuelle = st.number_input(
+        taxe_fonciere_annuelle = montant(
             "Taxe foncière annuelle (€)",
-            min_value=0.0,
-            step=50.0,
-            format="%.2f",
             key=f"taxe_{i}"
         )
 
-        copro = st.number_input(
+        copro = montant(
             "Charges de copropriété mensuelles (€)",
-            min_value=0.0,
-            step=10.0,
-            format="%.2f",
             key=f"copro_{i}"
         )
 
-        electricite = st.number_input(
+        electricite = montant(
             "Électricité mensuelle (€)",
-            min_value=0.0,
-            step=10.0,
-            format="%.2f",
             key=f"electricite_{i}"
         )
 
-        gaz = st.number_input(
+        gaz = montant(
             "Gaz mensuel (€)",
-            min_value=0.0,
-            step=10.0,
-            format="%.2f",
             key=f"gaz_{i}"
         )
 
-        credit = st.number_input(
+        credit = montant(
             "Crédit mensuel (€)",
-            min_value=0.0,
-            step=10.0,
-            format="%.2f",
             key=f"credit_{i}"
         )
 
-        assurance = st.number_input(
+        assurance = montant(
             "Assurance mensuelle (€)",
-            min_value=0.0,
-            step=5.0,
-            format="%.2f",
             key=f"assurance_{i}"
         )
 
-        imprevu = st.number_input(
+        imprevu = montant(
             "Imprévu mensuel (€)",
-            min_value=0.0,
-            step=10.0,
-            format="%.2f",
             key=f"imprevu_{i}"
         )
 
