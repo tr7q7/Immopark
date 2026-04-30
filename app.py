@@ -24,3 +24,6 @@ st.markdown("### Actions")
 
 if st.button("Ajouter un bien"):
     st.write("Formulaire à venir")
+git add .
+git commit -m "UI de base"
+git push
