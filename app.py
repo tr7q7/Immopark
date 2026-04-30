@@ -1,4 +1,11 @@
 import streamlit as st
+import json
+import os
+import hashlib
+import pandas as pd
+import plotly.express as px
+
+DATA_FILE = "lmnp_data.json"
 
 st.set_page_config(
     page_title="LMNP Cashflow",
@@ -12,7 +19,7 @@ st.markdown("""
     padding-top: 1rem;
     padding-left: 1rem;
     padding-right: 1rem;
-    max-width: 520px;
+    max-width: 560px;
 }
 
 h1 {
@@ -22,7 +29,7 @@ h1 {
 
 input {
     height: 48px !important;
-    font-size: 22px !important;
+    font-size: 21px !important;
     text-align: center !important;
 }
 
@@ -76,6 +83,26 @@ button {
 """, unsafe_allow_html=True)
 
 
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        return {"users": {}}
+
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {"users": {}}
+
+
+def save_data(data):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
+
+def hash_pin(pin):
+    return hashlib.sha256(pin.encode()).hexdigest()
+
+
 def to_float(value):
     try:
         return float(str(value).replace(",", ".")) if value else 0.0
@@ -83,17 +110,37 @@ def to_float(value):
         return 0.0
 
 
-def montant(label, key):
-    value = st.text_input(
-        label,
-        value="",
-        placeholder="Montant en €",
-        key=key
-    )
-    return to_float(value)
+def format_euro(value):
+    return f"{value:,.0f} €".replace(",", " ")
 
 
-def afficher_cashflow(value):
+def calcul_bien(bien):
+    loyer = to_float(bien.get("loyer", 0))
+    credit = to_float(bien.get("credit", 0))
+    assurance = to_float(bien.get("assurance", 0))
+    taxe_mensuelle = to_float(bien.get("taxe", 0)) / 12
+    copro = to_float(bien.get("copro", 0))
+    electricite = to_float(bien.get("electricite", 0))
+    gaz = to_float(bien.get("gaz", 0))
+    imprevu = to_float(bien.get("imprevu", 0))
+
+    charges = {
+        "Crédit": credit,
+        "Assurance": assurance,
+        "Taxe foncière": taxe_mensuelle,
+        "Copropriété": copro,
+        "Électricité": electricite,
+        "Gaz": gaz,
+        "Imprévu": imprevu,
+    }
+
+    total_charges = sum(charges.values())
+    cashflow = loyer - total_charges
+
+    return loyer, charges, total_charges, cashflow
+
+
+def afficher_cashflow(value, titre="Cashflow mensuel"):
     if value > 0:
         style = "pos"
     elif value < 0:
@@ -101,80 +148,253 @@ def afficher_cashflow(value):
     else:
         style = "neu"
 
-    txt = f"{value:,.0f} €".replace(",", " ")
-
     st.markdown(
         f"""
         <div class="cashflow-card {style}">
-            <div class="cashflow-title">Cashflow mensuel</div>
-            <div class="cashflow-value">{txt}</div>
+            <div class="cashflow-title">{titre}</div>
+            <div class="cashflow-value">{format_euro(value)}</div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
 
+def default_bien(nom):
+    return {
+        "nom": nom,
+        "loyer": "",
+        "credit": "",
+        "assurance": "",
+        "taxe": "",
+        "copro": "",
+        "electricite": "",
+        "gaz": "",
+        "imprevu": ""
+    }
+
+
+data = load_data()
+
+if "logged_user" not in st.session_state:
+    st.session_state.logged_user = None
+
 st.title("LMNP Cashflow")
 
-if "biens" not in st.session_state:
-    st.session_state.biens = ["Bien 1"]
+if st.session_state.logged_user is None:
+    st.markdown("### Connexion")
 
-if st.button("➕ Nouvelle Gestion"):
-    st.session_state.biens.append(f"Bien {len(st.session_state.biens) + 1}")
+    mode = st.radio(
+        "Mode",
+        ["Connexion", "Créer un compte"],
+        horizontal=True
+    )
 
-tabs = st.tabs(st.session_state.biens)
+    username = st.text_input("Nom d'utilisateur")
+    pin = st.text_input("Code PIN", type="password")
 
-for i, tab in enumerate(tabs):
-    with tab:
-        loyer = montant("Loyer perçu mensuel", f"loyer_{i}")
+    if mode == "Créer un compte":
+        if st.button("Créer mon compte"):
+            if not username or not pin:
+                st.error("Renseigne un nom d'utilisateur et un PIN.")
+            elif username in data["users"]:
+                st.error("Ce compte existe déjà.")
+            else:
+                data["users"][username] = {
+                    "pin": hash_pin(pin),
+                    "biens": [default_bien("Bien 1")]
+                }
+                save_data(data)
+                st.session_state.logged_user = username
+                st.rerun()
 
-        credit_prev = to_float(st.session_state.get(f"credit_{i}", ""))
-        assurance_prev = to_float(st.session_state.get(f"assurance_{i}", ""))
-        taxe_prev = to_float(st.session_state.get(f"taxe_{i}", "")) / 12
-        copro_prev = to_float(st.session_state.get(f"copro_{i}", ""))
-        electricite_prev = to_float(st.session_state.get(f"electricite_{i}", ""))
-        gaz_prev = to_float(st.session_state.get(f"gaz_{i}", ""))
-        imprevu_prev = to_float(st.session_state.get(f"imprevu_{i}", ""))
+    if mode == "Connexion":
+        if st.button("Se connecter"):
+            if username not in data["users"]:
+                st.error("Compte introuvable.")
+            elif data["users"][username]["pin"] != hash_pin(pin):
+                st.error("PIN incorrect.")
+            else:
+                st.session_state.logged_user = username
+                st.rerun()
 
-        total_prev = (
-            credit_prev
-            + assurance_prev
-            + taxe_prev
-            + copro_prev
-            + electricite_prev
-            + gaz_prev
-            + imprevu_prev
+    st.stop()
+
+
+user = st.session_state.logged_user
+user_data = data["users"][user]
+
+if "biens" not in user_data or len(user_data["biens"]) == 0:
+    user_data["biens"] = [default_bien("Bien 1")]
+    save_data(data)
+
+col_a, col_b = st.columns(2)
+
+with col_a:
+    if st.button("➕ Nouveau bien"):
+        user_data["biens"].append(default_bien(f"Bien {len(user_data['biens']) + 1}"))
+        save_data(data)
+        st.rerun()
+
+with col_b:
+    if st.button("Déconnexion"):
+        st.session_state.logged_user = None
+        st.rerun()
+
+
+biens = user_data["biens"]
+
+tab_names = []
+if len(biens) > 1:
+    tab_names.append("Dashboard")
+
+tab_names += [bien["nom"] for bien in biens]
+
+tabs = st.tabs(tab_names)
+
+tab_index = 0
+
+if len(biens) > 1:
+    with tabs[0]:
+        total_loyer = 0
+        total_charges = 0
+        total_cashflow = 0
+        charges_globales = {}
+
+        for bien in biens:
+            loyer, charges, charges_total, cashflow = calcul_bien(bien)
+            total_loyer += loyer
+            total_charges += charges_total
+            total_cashflow += cashflow
+
+            for nom_charge, montant in charges.items():
+                charges_globales[nom_charge] = charges_globales.get(nom_charge, 0) + montant
+
+        afficher_cashflow(total_cashflow, "Cashflow global mensuel")
+
+        st.metric("Loyers mensuels", format_euro(total_loyer))
+        st.metric("Charges mensuelles", format_euro(total_charges))
+
+        df_charges = pd.DataFrame({
+            "Charge": list(charges_globales.keys()),
+            "Montant": list(charges_globales.values())
+        })
+
+        df_charges = df_charges[df_charges["Montant"] > 0]
+
+        if not df_charges.empty:
+            st.markdown("### Répartition des charges globales")
+            fig_pie = px.pie(
+                df_charges,
+                names="Charge",
+                values="Montant",
+                hole=0.35
+            )
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+            st.markdown("### Charges par catégorie")
+            fig_bar = px.bar(
+                df_charges,
+                x="Charge",
+                y="Montant",
+                text="Montant"
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
+        else:
+            st.info("Renseigne les charges pour afficher les graphiques.")
+
+    tab_index = 1
+
+
+for i, bien in enumerate(biens):
+    with tabs[tab_index + i]:
+        loyer, charges, total_charges, cashflow = calcul_bien(bien)
+
+        afficher_cashflow(cashflow)
+
+        nouveau_nom = st.text_input(
+            "Nom du bien",
+            value=bien.get("nom", f"Bien {i + 1}"),
+            key=f"nom_{i}"
         )
 
-        afficher_cashflow(loyer - total_prev)
+        st.markdown("### Revenus")
+
+        loyer_input = st.text_input(
+            "Loyer perçu mensuel",
+            value=str(bien.get("loyer", "")),
+            placeholder="Montant en €",
+            key=f"loyer_{i}"
+        )
 
         st.markdown("### Charges principales")
 
-        credit = montant("Crédit mensuel", f"credit_{i}")
-        assurance = montant("Assurance mensuelle", f"assurance_{i}")
-        taxe_annuelle = montant("Taxe foncière annuelle", f"taxe_{i}")
-        copro = montant("Charges de copropriété mensuelles", f"copro_{i}")
+        credit_input = st.text_input(
+            "Crédit mensuel",
+            value=str(bien.get("credit", "")),
+            placeholder="Montant en €",
+            key=f"credit_{i}"
+        )
+
+        assurance_input = st.text_input(
+            "Assurance mensuelle",
+            value=str(bien.get("assurance", "")),
+            placeholder="Montant en €",
+            key=f"assurance_{i}"
+        )
+
+        taxe_input = st.text_input(
+            "Taxe foncière annuelle",
+            value=str(bien.get("taxe", "")),
+            placeholder="Montant annuel en €",
+            key=f"taxe_{i}"
+        )
+
+        copro_input = st.text_input(
+            "Charges de copropriété mensuelles",
+            value=str(bien.get("copro", "")),
+            placeholder="Montant en €",
+            key=f"copro_{i}"
+        )
 
         st.markdown("### Charges optionnelles")
 
-        electricite = montant("Électricité mensuelle", f"electricite_{i}")
-        gaz = montant("Gaz mensuel", f"gaz_{i}")
-        imprevu = montant("Imprévu mensuel", f"imprevu_{i}")
+        electricite_input = st.text_input(
+            "Électricité mensuelle",
+            value=str(bien.get("electricite", "")),
+            placeholder="Montant en €",
+            key=f"electricite_{i}"
+        )
 
-        taxe_mensuelle = taxe_annuelle / 12
+        gaz_input = st.text_input(
+            "Gaz mensuel",
+            value=str(bien.get("gaz", "")),
+            placeholder="Montant en €",
+            key=f"gaz_{i}"
+        )
 
-        total_charges = (
-            credit
-            + assurance
-            + taxe_mensuelle
-            + copro
-            + electricite
-            + gaz
-            + imprevu
+        imprevu_input = st.text_input(
+            "Imprévu mensuel",
+            value=str(bien.get("imprevu", "")),
+            placeholder="Montant en €",
+            key=f"imprevu_{i}"
         )
 
         st.caption(
-            f"Charges mensuelles : {total_charges:,.0f} € | "
-            f"Taxe foncière mensualisée : {taxe_mensuelle:,.0f} €"
-            .replace(",", " ")
+            f"Charges mensuelles : {format_euro(total_charges)} | "
+            f"Taxe foncière mensualisée : {format_euro(to_float(bien.get('taxe', 0)) / 12)}"
         )
+
+        if st.button("💾 Sauvegarder", key=f"save_{i}"):
+            bien["nom"] = nouveau_nom if nouveau_nom else f"Bien {i + 1}"
+            bien["loyer"] = loyer_input
+            bien["credit"] = credit_input
+            bien["assurance"] = assurance_input
+            bien["taxe"] = taxe_input
+            bien["copro"] = copro_input
+            bien["electricite"] = electricite_input
+            bien["gaz"] = gaz_input
+            bien["imprevu"] = imprevu_input
+
+            save_data(data)
+            st.success("Bien sauvegardé.")
+            st.rerun()
