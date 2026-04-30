@@ -2,8 +2,12 @@ import streamlit as st
 import json
 import os
 import hashlib
+import secrets
+import smtplib
+import ssl
 import pandas as pd
 import plotly.express as px
+from email.message import EmailMessage
 
 DATA_FILE = "lmnp_data.json"
 
@@ -99,8 +103,8 @@ def save_data(data):
         json.dump(data, f, indent=4, ensure_ascii=False)
 
 
-def hash_pin(pin):
-    return hashlib.sha256(pin.encode()).hexdigest()
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
 
 def to_float(value):
@@ -112,6 +116,20 @@ def to_float(value):
 
 def format_euro(value):
     return f"{value:,.0f} €".replace(",", " ")
+
+
+def default_bien(nom):
+    return {
+        "nom": nom,
+        "loyer": "",
+        "credit": "",
+        "assurance": "",
+        "taxe": "",
+        "copro": "",
+        "electricite": "",
+        "gaz": "",
+        "imprevu": ""
+    }
 
 
 def calcul_bien(bien):
@@ -159,18 +177,45 @@ def afficher_cashflow(value, titre="Cashflow mensuel"):
     )
 
 
-def default_bien(nom):
-    return {
-        "nom": nom,
-        "loyer": "",
-        "credit": "",
-        "assurance": "",
-        "taxe": "",
-        "copro": "",
-        "electricite": "",
-        "gaz": "",
-        "imprevu": ""
-    }
+def smtp_is_configured():
+    required = ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"]
+    return all(k in st.secrets for k in required)
+
+
+def send_reset_email(to_email, reset_code):
+    if not smtp_is_configured():
+        return False
+
+    msg = EmailMessage()
+    msg["Subject"] = "Réinitialisation mot de passe - LMNP Cashflow"
+    msg["From"] = st.secrets["SMTP_FROM"]
+    msg["To"] = to_email
+
+    msg.set_content(
+        f"""
+Bonjour,
+
+Voici votre code de réinitialisation :
+
+{reset_code}
+
+Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.
+
+LMNP Cashflow
+"""
+    )
+
+    context = ssl.create_default_context()
+
+    with smtplib.SMTP_SSL(
+        st.secrets["SMTP_HOST"],
+        int(st.secrets["SMTP_PORT"]),
+        context=context
+    ) as server:
+        server.login(st.secrets["SMTP_USER"], st.secrets["SMTP_PASSWORD"])
+        server.send_message(msg)
+
+    return True
 
 
 data = load_data()
@@ -178,44 +223,118 @@ data = load_data()
 if "logged_user" not in st.session_state:
     st.session_state.logged_user = None
 
+if "reset_email" not in st.session_state:
+    st.session_state.reset_email = None
+
 st.title("LMNP Cashflow")
 
 if st.session_state.logged_user is None:
-    st.markdown("### Connexion")
-
     mode = st.radio(
-        "Mode",
-        ["Connexion", "Créer un compte"],
+        "Accès",
+        ["Connexion", "Créer un compte", "Mot de passe oublié"],
         horizontal=True
     )
 
-    username = st.text_input("Nom d'utilisateur")
-    pin = st.text_input("Code PIN", type="password")
-
     if mode == "Créer un compte":
+        email = st.text_input("Email")
+        password = st.text_input("Mot de passe", type="password")
+        password_confirm = st.text_input("Confirmer le mot de passe", type="password")
+
         if st.button("Créer mon compte"):
-            if not username or not pin:
-                st.error("Renseigne un nom d'utilisateur et un PIN.")
-            elif username in data["users"]:
-                st.error("Ce compte existe déjà.")
+            email = email.strip().lower()
+
+            if not email or "@" not in email:
+                st.error("Email invalide.")
+            elif not password:
+                st.error("Mot de passe obligatoire.")
+            elif password != password_confirm:
+                st.error("Les mots de passe ne correspondent pas.")
+            elif email in data["users"]:
+                st.error("Un compte existe déjà avec cet email.")
             else:
-                data["users"][username] = {
-                    "pin": hash_pin(pin),
+                data["users"][email] = {
+                    "password": hash_password(password),
+                    "reset_code": None,
                     "biens": [default_bien("Bien 1")]
                 }
                 save_data(data)
-                st.session_state.logged_user = username
+                st.session_state.logged_user = email
                 st.rerun()
 
-    if mode == "Connexion":
+    elif mode == "Connexion":
+        email = st.text_input("Email")
+        password = st.text_input("Mot de passe", type="password")
+
         if st.button("Se connecter"):
-            if username not in data["users"]:
+            email = email.strip().lower()
+
+            if email not in data["users"]:
                 st.error("Compte introuvable.")
-            elif data["users"][username]["pin"] != hash_pin(pin):
-                st.error("PIN incorrect.")
+            elif data["users"][email]["password"] != hash_password(password):
+                st.error("Mot de passe incorrect.")
             else:
-                st.session_state.logged_user = username
+                st.session_state.logged_user = email
                 st.rerun()
+
+    elif mode == "Mot de passe oublié":
+        email = st.text_input("Email du compte")
+
+        if st.button("Recevoir un code"):
+            email = email.strip().lower()
+
+            if email not in data["users"]:
+                st.error("Compte introuvable.")
+            else:
+                reset_code = str(secrets.randbelow(900000) + 100000)
+                data["users"][email]["reset_code"] = reset_code
+                save_data(data)
+
+                try:
+                    sent = send_reset_email(email, reset_code)
+                    st.session_state.reset_email = email
+
+                    if sent:
+                        st.success("Code envoyé par email.")
+                    else:
+                        st.warning(
+                            "SMTP non configuré. Pour le test, voici le code : "
+                            f"{reset_code}"
+                        )
+                except Exception as e:
+                    st.session_state.reset_email = email
+                    st.warning(
+                        "Impossible d'envoyer l'email. "
+                        f"Code de test : {reset_code}"
+                    )
+
+        if st.session_state.reset_email:
+            st.markdown("### Réinitialiser le mot de passe")
+
+            code = st.text_input("Code reçu")
+            new_password = st.text_input("Nouveau mot de passe", type="password")
+            new_password_confirm = st.text_input(
+                "Confirmer le nouveau mot de passe",
+                type="password"
+            )
+
+            if st.button("Changer le mot de passe"):
+                email_reset = st.session_state.reset_email
+
+                if email_reset not in data["users"]:
+                    st.error("Compte introuvable.")
+                elif code != data["users"][email_reset].get("reset_code"):
+                    st.error("Code incorrect.")
+                elif not new_password:
+                    st.error("Mot de passe obligatoire.")
+                elif new_password != new_password_confirm:
+                    st.error("Les mots de passe ne correspondent pas.")
+                else:
+                    data["users"][email_reset]["password"] = hash_password(new_password)
+                    data["users"][email_reset]["reset_code"] = None
+                    save_data(data)
+
+                    st.session_state.reset_email = None
+                    st.success("Mot de passe modifié. Tu peux te connecter.")
 
     st.stop()
 
@@ -244,6 +363,7 @@ with col_b:
 biens = user_data["biens"]
 
 tab_names = []
+
 if len(biens) > 1:
     tab_names.append("Dashboard")
 
@@ -262,6 +382,7 @@ if len(biens) > 1:
 
         for bien in biens:
             loyer, charges, charges_total, cashflow = calcul_bien(bien)
+
             total_loyer += loyer
             total_charges += charges_total
             total_cashflow += cashflow
@@ -283,21 +404,25 @@ if len(biens) > 1:
 
         if not df_charges.empty:
             st.markdown("### Répartition des charges globales")
+
             fig_pie = px.pie(
                 df_charges,
                 names="Charge",
                 values="Montant",
                 hole=0.35
             )
+
             st.plotly_chart(fig_pie, use_container_width=True)
 
             st.markdown("### Charges par catégorie")
+
             fig_bar = px.bar(
                 df_charges,
                 x="Charge",
                 y="Montant",
                 text="Montant"
             )
+
             st.plotly_chart(fig_bar, use_container_width=True)
         else:
             st.info("Renseigne les charges pour afficher les graphiques.")
