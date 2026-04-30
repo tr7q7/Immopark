@@ -139,18 +139,7 @@ tabs = st.tabs(st.session_state.biens)
 
 for i, tab in enumerate(tabs):
     with tab:
-        loyer = montant(
-            "Loyer perçu mensuel",
-            key=f"loyer_{i}"
-        )
-
-        taxe_fonciere_annuelle = st.session_state.get(f"taxe_{i}", "")
-        copro_val = st.session_state.get(f"copro_{i}", "")
-        electricite_val = st.session_state.get(f"electricite_{i}", "")
-        gaz_val = st.session_state.get(f"gaz_{i}", "")
-        credit_val = st.session_state.get(f"credit_{i}", "")
-        assurance_val = st.session_state.get(f"assurance_{i}", "")
-        imprevu_val = st.session_state.get(f"imprevu_{i}", "")
+        loyer = montant("Loyer perçu mensuel", key=f"loyer_{i}")
 
         def to_float(v):
             try:
@@ -158,15 +147,23 @@ for i, tab in enumerate(tabs):
             except ValueError:
                 return 0.0
 
+        taxe_fonciere_annuelle = st.session_state.get(f"taxe_{i}", "")
+        copro_val = st.session_state.get(f"copro_{i}", "")
+        credit_val = st.session_state.get(f"credit_{i}", "")
+        assurance_val = st.session_state.get(f"assurance_{i}", "")
+        electricite_val = st.session_state.get(f"electricite_{i}", "")
+        gaz_val = st.session_state.get(f"gaz_{i}", "")
+        imprevu_val = st.session_state.get(f"imprevu_{i}", "")
+
         taxe_mensuelle_preview = to_float(taxe_fonciere_annuelle) / 12
 
         charges_preview = (
             taxe_mensuelle_preview
             + to_float(copro_val)
-            + to_float(electricite_val)
-            + to_float(gaz_val)
             + to_float(credit_val)
             + to_float(assurance_val)
+            + to_float(electricite_val)
+            + to_float(gaz_val)
             + to_float(imprevu_val)
         )
 
@@ -177,51 +174,25 @@ for i, tab in enumerate(tabs):
         col1, col2 = st.columns(2)
 
         with col1:
-            taxe_fonciere_annuelle = montant(
-                "Taxe foncière annuelle",
-                key=f"taxe_{i}"
-            )
-
-            electricite = montant(
-                "Électricité mensuelle",
-                key=f"electricite_{i}"
-            )
-
-            credit = montant(
-                "Crédit mensuel",
-                key=f"credit_{i}"
-            )
-
-            imprevu = montant(
-                "Imprévu mensuel",
-                key=f"imprevu_{i}"
-            )
+            taxe_fonciere_annuelle = montant("Taxe foncière annuelle", key=f"taxe_{i}")
+            credit = montant("Crédit mensuel", key=f"credit_{i}")
+            electricite = montant("Électricité mensuelle", key=f"electricite_{i}")
+            imprevu = montant("Imprévu mensuel", key=f"imprevu_{i}")
 
         with col2:
-            copro = montant(
-                "Copro mensuelle",
-                key=f"copro_{i}"
-            )
-
-            gaz = montant(
-                "Gaz mensuel",
-                key=f"gaz_{i}"
-            )
-
-            assurance = montant(
-                "Assurance mensuelle",
-                key=f"assurance_{i}"
-            )
+            copro = montant("Copro mensuelle", key=f"copro_{i}")
+            assurance = montant("Assurance mensuelle", key=f"assurance_{i}")
+            gaz = montant("Gaz mensuel", key=f"gaz_{i}")
 
         taxe_mensuelle = taxe_fonciere_annuelle / 12
 
         charges_totales = (
             taxe_mensuelle
             + copro
-            + electricite
-            + gaz
             + credit
             + assurance
+            + electricite
+            + gaz
             + imprevu
         )
 
