@@ -418,23 +418,21 @@ if "biens" not in user_data or len(user_data["biens"]) == 0:
     user_data["biens"] = [default_bien("Bien 1")]
     save_data(data)
 
-with st.container():
-    st.markdown('<div class="top-right-button">', unsafe_allow_html=True)
-    if st.button("Déconnexion"):
-        st.session_state.logged_user = None
-        st.session_state.login_time = None
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+st.markdown('<div class="top-right-button">', unsafe_allow_html=True)
+if st.button("Déconnexion"):
+    st.session_state.logged_user = None
+    st.session_state.login_time = None
+    st.rerun()
+st.markdown('</div>', unsafe_allow_html=True)
 
 biens = user_data["biens"]
 
-with st.container():
-    st.markdown('<div class="bottom-plus">', unsafe_allow_html=True)
-    if st.button("+"):
-        user_data["biens"].append(default_bien(f"Bien {len(user_data['biens']) + 1}"))
-        save_data(data)
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+st.markdown('<div class="bottom-plus">', unsafe_allow_html=True)
+if st.button("+"):
+    user_data["biens"].append(default_bien(f"Bien {len(user_data['biens']) + 1}"))
+    save_data(data)
+    st.rerun()
+st.markdown('</div>', unsafe_allow_html=True)
 
 tab_names = []
 
@@ -452,8 +450,8 @@ if len(biens) > 1:
         total_loyer = 0
         total_charges = 0
         total_cashflow = 0
-        total_prix_achat = 0
         charges_globales = {}
+        ratios_biens = []
 
         for bien in biens:
             loyer, charges, charges_total, cashflow, cashflow_annuel, prix_achat, rendement_cashflow = calcul_bien(bien)
@@ -461,16 +459,25 @@ if len(biens) > 1:
             total_loyer += loyer
             total_charges += charges_total
             total_cashflow += cashflow
-            total_prix_achat += prix_achat
+
+            ratios_biens.append({
+                "nom": bien.get("nom", "Bien"),
+                "ratio": rendement_cashflow,
+                "prix_achat": prix_achat
+            })
 
             for nom_charge, montant in charges.items():
                 charges_globales[nom_charge] = charges_globales.get(nom_charge, 0) + montant
 
-        ratio_global = ((total_cashflow * 12) / total_prix_achat * 100) if total_prix_achat > 0 else 0
-
         afficher_cashflow(total_cashflow, "Cashflow global mensuel")
 
-        afficher_metric("Cashflow annuel / prix d'achat total", f"{ratio_global:.2f} %")
+        st.markdown("### Ratio cashflow / prix d'achat")
+
+        for item in ratios_biens:
+            if item["prix_achat"] > 0:
+                afficher_metric(item["nom"], f"{item['ratio']:.2f} %")
+            else:
+                afficher_metric(item["nom"], "Prix d'achat non renseigné")
 
         afficher_metric("Loyer mensuel", format_euro(total_loyer))
         afficher_metric("Loyer annuel", format_euro(total_loyer * 12))
