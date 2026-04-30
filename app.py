@@ -20,15 +20,16 @@ st.set_page_config(
 st.markdown("""
 <style>
 .block-container {
-    padding-top: 1rem;
+    padding-top: 0.8rem;
     padding-left: 1rem;
     padding-right: 1rem;
     max-width: 560px;
 }
 
 h1 {
-    font-size: 26px !important;
+    font-size: 25px !important;
     text-align: center;
+    margin-bottom: 0.4rem;
 }
 
 input {
@@ -43,9 +44,39 @@ label {
 }
 
 button {
-    width: 100% !important;
-    height: 46px !important;
-    font-size: 16px !important;
+    height: 44px !important;
+    font-size: 15px !important;
+}
+
+.top-right-button {
+    position: fixed;
+    top: 8px;
+    right: 10px;
+    z-index: 9999;
+}
+
+.top-right-button button {
+    width: auto !important;
+    height: 30px !important;
+    font-size: 11px !important;
+    padding: 2px 8px !important;
+    opacity: 0.75;
+}
+
+.bottom-plus {
+    position: fixed;
+    bottom: 18px;
+    right: 18px;
+    z-index: 9999;
+}
+
+.bottom-plus button {
+    width: 54px !important;
+    height: 54px !important;
+    border-radius: 50% !important;
+    font-size: 28px !important;
+    font-weight: 700 !important;
+    padding: 0 !important;
 }
 
 .cashflow-card {
@@ -83,6 +114,27 @@ button {
     color: #344054;
     border: 2px solid #98a2b3;
 }
+
+.small-metric {
+    padding: 12px;
+    border-radius: 14px;
+    background: #f8f9fb;
+    border: 1px solid #e5e7eb;
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+.small-metric-title {
+    font-size: 13px;
+    color: #667085;
+    font-weight: 600;
+}
+
+.small-metric-value {
+    font-size: 25px;
+    font-weight: 800;
+    color: #101828;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -90,7 +142,6 @@ button {
 def load_data():
     if not os.path.exists(DATA_FILE):
         return {"users": {}}
-
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -121,6 +172,7 @@ def format_euro(value):
 def default_bien(nom):
     return {
         "nom": nom,
+        "prix_achat_total": "",
         "loyer": "",
         "credit": "",
         "assurance": "",
@@ -134,6 +186,7 @@ def default_bien(nom):
 
 def calcul_bien(bien):
     loyer = to_float(bien.get("loyer", 0))
+    prix_achat_total = to_float(bien.get("prix_achat_total", 0))
     credit = to_float(bien.get("credit", 0))
     assurance = to_float(bien.get("assurance", 0))
     taxe_mensuelle = to_float(bien.get("taxe", 0)) / 12
@@ -154,8 +207,10 @@ def calcul_bien(bien):
 
     total_charges = sum(charges.values())
     cashflow = loyer - total_charges
+    cashflow_annuel = cashflow * 12
+    rendement_cashflow = (cashflow_annuel / prix_achat_total * 100) if prix_achat_total > 0 else 0
 
-    return loyer, charges, total_charges, cashflow
+    return loyer, charges, total_charges, cashflow, cashflow_annuel, prix_achat_total, rendement_cashflow
 
 
 def afficher_cashflow(value, titre="Cashflow mensuel"):
@@ -171,6 +226,18 @@ def afficher_cashflow(value, titre="Cashflow mensuel"):
         <div class="cashflow-card {style}">
             <div class="cashflow-title">{titre}</div>
             <div class="cashflow-value">{format_euro(value)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+def afficher_metric(titre, valeur):
+    st.markdown(
+        f"""
+        <div class="small-metric">
+            <div class="small-metric-title">{titre}</div>
+            <div class="small-metric-value">{valeur}</div>
         </div>
         """,
         unsafe_allow_html=True
@@ -296,26 +363,17 @@ if st.session_state.logged_user is None:
                     if sent:
                         st.success("Code envoyé par email.")
                     else:
-                        st.warning(
-                            "SMTP non configuré. Pour le test, voici le code : "
-                            f"{reset_code}"
-                        )
-                except Exception as e:
+                        st.warning(f"SMTP non configuré. Code de test : {reset_code}")
+                except Exception:
                     st.session_state.reset_email = email
-                    st.warning(
-                        "Impossible d'envoyer l'email. "
-                        f"Code de test : {reset_code}"
-                    )
+                    st.warning(f"Impossible d'envoyer l'email. Code de test : {reset_code}")
 
         if st.session_state.reset_email:
             st.markdown("### Réinitialiser le mot de passe")
 
             code = st.text_input("Code reçu")
             new_password = st.text_input("Nouveau mot de passe", type="password")
-            new_password_confirm = st.text_input(
-                "Confirmer le nouveau mot de passe",
-                type="password"
-            )
+            new_password_confirm = st.text_input("Confirmer le nouveau mot de passe", type="password")
 
             if st.button("Changer le mot de passe"):
                 email_reset = st.session_state.reset_email
@@ -346,21 +404,22 @@ if "biens" not in user_data or len(user_data["biens"]) == 0:
     user_data["biens"] = [default_bien("Bien 1")]
     save_data(data)
 
-col_a, col_b = st.columns(2)
-
-with col_a:
-    if st.button("➕ Nouveau bien"):
-        user_data["biens"].append(default_bien(f"Bien {len(user_data['biens']) + 1}"))
-        save_data(data)
-        st.rerun()
-
-with col_b:
+with st.container():
+    st.markdown('<div class="top-right-button">', unsafe_allow_html=True)
     if st.button("Déconnexion"):
         st.session_state.logged_user = None
         st.rerun()
-
+    st.markdown('</div>', unsafe_allow_html=True)
 
 biens = user_data["biens"]
+
+with st.container():
+    st.markdown('<div class="bottom-plus">', unsafe_allow_html=True)
+    if st.button("+"):
+        user_data["biens"].append(default_bien(f"Bien {len(user_data['biens']) + 1}"))
+        save_data(data)
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 tab_names = []
 
@@ -378,22 +437,30 @@ if len(biens) > 1:
         total_loyer = 0
         total_charges = 0
         total_cashflow = 0
+        total_prix_achat = 0
         charges_globales = {}
 
         for bien in biens:
-            loyer, charges, charges_total, cashflow = calcul_bien(bien)
+            loyer, charges, charges_total, cashflow, cashflow_annuel, prix_achat, rendement_cashflow = calcul_bien(bien)
 
             total_loyer += loyer
             total_charges += charges_total
             total_cashflow += cashflow
+            total_prix_achat += prix_achat
 
             for nom_charge, montant in charges.items():
                 charges_globales[nom_charge] = charges_globales.get(nom_charge, 0) + montant
 
+        rendement_global = ((total_cashflow * 12) / total_prix_achat * 100) if total_prix_achat > 0 else 0
+
         afficher_cashflow(total_cashflow, "Cashflow global mensuel")
 
-        st.metric("Loyers mensuels", format_euro(total_loyer))
-        st.metric("Charges mensuelles", format_euro(total_charges))
+        afficher_metric("Loyer mensuel", format_euro(total_loyer))
+        afficher_metric("Loyer annuel", format_euro(total_loyer * 12))
+        afficher_metric("Charges mensuelles", format_euro(total_charges))
+
+        if total_prix_achat > 0:
+            afficher_metric("Cashflow annuel / prix total", f"{rendement_global:.2f} %")
 
         df_charges = pd.DataFrame({
             "Charge": list(charges_globales.keys()),
@@ -411,7 +478,6 @@ if len(biens) > 1:
                 values="Montant",
                 hole=0.35
             )
-
             st.plotly_chart(fig_pie, use_container_width=True)
 
             st.markdown("### Charges par catégorie")
@@ -422,7 +488,6 @@ if len(biens) > 1:
                 y="Montant",
                 text="Montant"
             )
-
             st.plotly_chart(fig_bar, use_container_width=True)
         else:
             st.info("Renseigne les charges pour afficher les graphiques.")
@@ -431,15 +496,28 @@ if len(biens) > 1:
 
 
 for i, bien in enumerate(biens):
+    if "prix_achat_total" not in bien:
+        bien["prix_achat_total"] = ""
+
     with tabs[tab_index + i]:
-        loyer, charges, total_charges, cashflow = calcul_bien(bien)
+        loyer, charges, total_charges, cashflow, cashflow_annuel, prix_achat_total, rendement_cashflow = calcul_bien(bien)
 
         afficher_cashflow(cashflow)
+
+        if prix_achat_total > 0:
+            afficher_metric("Cashflow annuel / prix total", f"{rendement_cashflow:.2f} %")
 
         nouveau_nom = st.text_input(
             "Nom du bien",
             value=bien.get("nom", f"Bien {i + 1}"),
             key=f"nom_{i}"
+        )
+
+        prix_achat_input = st.text_input(
+            "Prix d'achat total avec travaux",
+            value=str(bien.get("prix_achat_total", "")),
+            placeholder="Montant total en €",
+            key=f"prix_achat_total_{i}"
         )
 
         st.markdown("### Revenus")
@@ -506,11 +584,13 @@ for i, bien in enumerate(biens):
 
         st.caption(
             f"Charges mensuelles : {format_euro(total_charges)} | "
-            f"Taxe foncière mensualisée : {format_euro(to_float(bien.get('taxe', 0)) / 12)}"
+            f"Taxe foncière mensualisée : {format_euro(to_float(bien.get('taxe', 0)) / 12)} | "
+            f"Cashflow annuel : {format_euro(cashflow_annuel)}"
         )
 
         if st.button("💾 Sauvegarder", key=f"save_{i}"):
             bien["nom"] = nouveau_nom if nouveau_nom else f"Bien {i + 1}"
+            bien["prix_achat_total"] = prix_achat_input
             bien["loyer"] = loyer_input
             bien["credit"] = credit_input
             bien["assurance"] = assurance_input
