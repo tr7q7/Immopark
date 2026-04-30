@@ -8,122 +8,86 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    .block-container {
-        padding-top: 0.6rem;
-        padding-left: 0.8rem;
-        padding-right: 0.8rem;
-    }
+.block-container {
+    padding-top: 0.5rem;
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+}
 
-    h1 {
-        font-size: 26px !important;
-        margin-bottom: 0.4rem !important;
-    }
+h1 { font-size: 24px !important; margin-bottom: 0.3rem !important; }
 
-    h2, h3 {
-        margin-top: 0.4rem !important;
-        margin-bottom: 0.3rem !important;
-    }
+input {
+    font-size: 20px !important;
+    height: 46px !important;
+    text-align: center !important;
+}
 
-    input {
-        font-size: 22px !important;
-        height: 48px !important;
-        text-align: center !important;
-    }
+label {
+    font-size: 13px !important;
+    font-weight: 600 !important;
+}
 
-    label {
-        font-size: 14px !important;
-        font-weight: 600 !important;
-    }
+button {
+    height: 46px !important;
+    font-size: 15px !important;
+}
 
-    button {
-        height: 48px !important;
-        font-size: 16px !important;
-    }
+/* FORCE 2 COLONNES MEME SUR MOBILE */
+div[data-testid="column"] {
+    width: 50% !important;
+    flex: 1 1 50% !important;
+}
 
-    div[data-testid="stVerticalBlock"] {
-        gap: 0.35rem !important;
-    }
+.cashflow-card {
+    padding: 12px;
+    border-radius: 16px;
+    text-align: center;
+    margin-bottom: 6px;
+}
 
-    .stTextInput {
-        margin-bottom: -0.4rem !important;
-    }
+.cashflow-title {
+    font-size: 14px;
+    font-weight: 600;
+}
 
-    .cashflow-card {
-        padding: 14px;
-        border-radius: 18px;
-        text-align: center;
-        margin-bottom: 8px;
-    }
+.cashflow-value {
+    font-size: 36px;
+    font-weight: 800;
+}
 
-    .cashflow-title {
-        font-size: 15px;
-        font-weight: 600;
-        opacity: 0.85;
-    }
+.pos { background:#e8f7ee; color:#127333; border:2px solid #2ea44f; }
+.neg { background:#fdeaea; color:#b42318; border:2px solid #d92d20; }
+.neu { background:#f2f4f7; color:#344054; border:2px solid #98a2b3; }
 
-    .cashflow-value {
-        font-size: 42px;
-        font-weight: 800;
-        line-height: 1.1;
-    }
-
-    .cashflow-positive {
-        background-color: #e8f7ee;
-        color: #127333;
-        border: 2px solid #2ea44f;
-    }
-
-    .cashflow-negative {
-        background-color: #fdeaea;
-        color: #b42318;
-        border: 2px solid #d92d20;
-    }
-
-    .cashflow-neutral {
-        background-color: #f2f4f7;
-        color: #344054;
-        border: 2px solid #98a2b3;
-    }
 </style>
 """, unsafe_allow_html=True)
 
 
 def montant(label, key):
-    valeur = st.text_input(
-        label,
-        value="",
-        placeholder="€",
-        key=key
-    )
-
-    valeur = valeur.replace(",", ".")
-
+    val = st.text_input(label, value="", placeholder="€", key=key)
+    val = val.replace(",", ".")
     try:
-        return float(valeur) if valeur else 0.0
-    except ValueError:
-        st.warning(f"Montant invalide : {label}")
+        return float(val) if val else 0.0
+    except:
         return 0.0
 
 
-def afficher_cashflow(cashflow):
-    if cashflow > 0:
-        classe = "cashflow-positive"
-    elif cashflow < 0:
-        classe = "cashflow-negative"
+def cashflow_card(v):
+    if v > 0:
+        c = "pos"
+    elif v < 0:
+        c = "neg"
     else:
-        classe = "cashflow-neutral"
+        c = "neu"
 
-    valeur = f"{cashflow:,.2f} €".replace(",", " ")
+    txt = f"{v:,.0f} €".replace(",", " ")
 
-    st.markdown(
-        f"""
-        <div class="cashflow-card {classe}">
-            <div class="cashflow-title">Cashflow mensuel</div>
-            <div class="cashflow-value">{valeur}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    st.markdown(f"""
+    <div class="cashflow-card {c}">
+        <div class="cashflow-title">Cashflow mensuel</div>
+        <div class="cashflow-value">{txt}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 st.title("🏠 LMNP Cashflow")
@@ -132,72 +96,54 @@ if "biens" not in st.session_state:
     st.session_state.biens = ["Bien 1"]
 
 if st.button("➕ Nouvelle Gestion"):
-    nouveau_nom = f"Bien {len(st.session_state.biens) + 1}"
-    st.session_state.biens.append(nouveau_nom)
+    st.session_state.biens.append(f"Bien {len(st.session_state.biens)+1}")
 
 tabs = st.tabs(st.session_state.biens)
 
 for i, tab in enumerate(tabs):
     with tab:
-        loyer = montant("Loyer perçu mensuel", key=f"loyer_{i}")
 
-        def to_float(v):
-            try:
-                return float(str(v).replace(",", ".")) if v else 0.0
-            except ValueError:
-                return 0.0
+        # LOYER
+        loyer = montant("Loyer perçu mensuel", f"loyer_{i}")
 
-        taxe_fonciere_annuelle = st.session_state.get(f"taxe_{i}", "")
-        copro_val = st.session_state.get(f"copro_{i}", "")
-        credit_val = st.session_state.get(f"credit_{i}", "")
-        assurance_val = st.session_state.get(f"assurance_{i}", "")
-        electricite_val = st.session_state.get(f"electricite_{i}", "")
-        gaz_val = st.session_state.get(f"gaz_{i}", "")
-        imprevu_val = st.session_state.get(f"imprevu_{i}", "")
+        # PREVIEW
+        def g(k): return st.session_state.get(k, "")
+        def f(v):
+            try: return float(str(v).replace(",", ".")) if v else 0.0
+            except: return 0.0
 
-        taxe_mensuelle_preview = to_float(taxe_fonciere_annuelle) / 12
+        taxe = f(g(f"taxe_{i}")) / 12
+        copro = f(g(f"copro_{i}"))
+        credit = f(g(f"credit_{i}"))
+        assurance = f(g(f"assurance_{i}"))
+        elec = f(g(f"electricite_{i}"))
+        gaz = f(g(f"gaz_{i}"))
+        imp = f(g(f"imprevu_{i}"))
 
-        charges_preview = (
-            taxe_mensuelle_preview
-            + to_float(copro_val)
-            + to_float(credit_val)
-            + to_float(assurance_val)
-            + to_float(electricite_val)
-            + to_float(gaz_val)
-            + to_float(imprevu_val)
-        )
+        charges = taxe + copro + credit + assurance + elec + gaz + imp
+        cf = loyer - charges
 
-        cashflow_preview = loyer - charges_preview
+        cashflow_card(cf)
 
-        afficher_cashflow(cashflow_preview)
-
+        # 2 COLONNES
         col1, col2 = st.columns(2)
 
         with col1:
-            taxe_fonciere_annuelle = montant("Taxe foncière annuelle", key=f"taxe_{i}")
-            credit = montant("Crédit mensuel", key=f"credit_{i}")
-            electricite = montant("Électricité mensuelle", key=f"electricite_{i}")
-            imprevu = montant("Imprévu mensuel", key=f"imprevu_{i}")
+            taxe_ann = montant("Taxe foncière annuelle", f"taxe_{i}")
+            credit = montant("Crédit mensuel", f"credit_{i}")
+            elec = montant("Électricité mensuelle", f"electricite_{i}")
+            imp = montant("Imprévu mensuel", f"imprevu_{i}")
 
         with col2:
-            copro = montant("Copro mensuelle", key=f"copro_{i}")
-            assurance = montant("Assurance mensuelle", key=f"assurance_{i}")
-            gaz = montant("Gaz mensuel", key=f"gaz_{i}")
+            copro = montant("Copro mensuelle", f"copro_{i}")
+            assurance = montant("Assurance mensuelle", f"assurance_{i}")
+            gaz = montant("Gaz mensuel", f"gaz_{i}")
 
-        taxe_mensuelle = taxe_fonciere_annuelle / 12
+        taxe_m = taxe_ann / 12
 
-        charges_totales = (
-            taxe_mensuelle
-            + copro
-            + credit
-            + assurance
-            + electricite
-            + gaz
-            + imprevu
-        )
+        total = taxe_m + copro + credit + assurance + elec + gaz + imp
 
         st.caption(
-            f"Charges mensuelles : {charges_totales:,.2f} € | "
-            f"Taxe foncière mensualisée : {taxe_mensuelle:,.2f} €"
+            f"Charges : {total:,.0f} € | Taxe mensualisée : {taxe_m:,.0f} €"
             .replace(",", " ")
         )
