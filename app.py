@@ -3,113 +3,77 @@ import streamlit as st
 st.set_page_config(
     page_title="LMNP Cashflow",
     page_icon="🏠",
-    layout="wide"
+    layout="centered"
 )
 
 st.markdown("""
 <style>
 .block-container {
-    padding: 0.2rem 0.25rem !important;
-    max-width: 100% !important;
+    padding-top: 1rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+    max-width: 520px;
 }
 
 h1 {
-    font-size: 17px !important;
-    margin: 0 !important;
-    padding: 0 !important;
+    font-size: 26px !important;
+    text-align: center;
 }
 
-button {
-    height: 32px !important;
-    font-size: 12px !important;
-    padding: 0 !important;
-}
-
-div[data-testid="stTabs"] button {
-    height: 28px !important;
-    font-size: 11px !important;
-    padding: 0 6px !important;
-}
-
-div[data-testid="stVerticalBlock"] {
-    gap: 0.05rem !important;
-}
-
-/* FORCE 2 COLONNES */
-div[data-testid="stHorizontalBlock"] {
-    display: flex !important;
-    flex-direction: row !important;
-    flex-wrap: nowrap !important;
-    gap: 0.25rem !important;
-}
-
-div[data-testid="column"] {
-    width: 50% !important;
-    flex: 0 0 50% !important;
-    padding: 0 !important;
-}
-
-/* RÉDUCTION LARGEUR INPUT */
-.stTextInput > div {
-    display: flex;
-    justify-content: center;
-}
-
-.stTextInput input {
-    width: 60% !important;
-    max-width: 90px !important;
-    height: 30px !important;
-    font-size: 15px !important;
+input {
+    height: 48px !important;
+    font-size: 22px !important;
     text-align: center !important;
-    padding: 0 !important;
 }
 
 label {
-    font-size: 10px !important;
+    font-size: 15px !important;
     font-weight: 600 !important;
-    text-align: center;
 }
 
-.stTextInput {
-    margin-bottom: -0.8rem !important;
+button {
+    width: 100% !important;
+    height: 46px !important;
+    font-size: 16px !important;
 }
 
 .cashflow-card {
-    padding: 5px;
-    border-radius: 10px;
+    padding: 18px;
+    border-radius: 18px;
     text-align: center;
-    margin: 1px 0 3px 0;
+    margin: 14px 0;
 }
 
 .cashflow-title {
-    font-size: 11px;
+    font-size: 16px;
     font-weight: 600;
 }
 
 .cashflow-value {
-    font-size: 28px;
+    font-size: 44px;
     font-weight: 800;
-    line-height: 1;
+    line-height: 1.1;
 }
 
-.pos { background:#e8f7ee; color:#127333; border:2px solid #2ea44f; }
-.neg { background:#fdeaea; color:#b42318; border:2px solid #d92d20; }
-.neu { background:#f2f4f7; color:#344054; border:2px solid #98a2b3; }
+.pos {
+    background: #e8f7ee;
+    color: #127333;
+    border: 2px solid #2ea44f;
+}
 
-div[data-testid="stCaptionContainer"] {
-    font-size: 9px !important;
+.neg {
+    background: #fdeaea;
+    color: #b42318;
+    border: 2px solid #d92d20;
+}
+
+.neu {
+    background: #f2f4f7;
+    color: #344054;
+    border: 2px solid #98a2b3;
 }
 </style>
 """, unsafe_allow_html=True)
-
-
-def montant(label, key):
-    val = st.text_input(label, value="", placeholder="€", key=key)
-    val = val.replace(",", ".")
-    try:
-        return float(val) if val else 0.0
-    except ValueError:
-        return 0.0
 
 
 def to_float(value):
@@ -117,6 +81,16 @@ def to_float(value):
         return float(str(value).replace(",", ".")) if value else 0.0
     except ValueError:
         return 0.0
+
+
+def montant(label, key):
+    value = st.text_input(
+        label,
+        value="",
+        placeholder="Montant en €",
+        key=key
+    )
+    return to_float(value)
 
 
 def afficher_cashflow(value):
@@ -152,7 +126,7 @@ tabs = st.tabs(st.session_state.biens)
 
 for i, tab in enumerate(tabs):
     with tab:
-        loyer = montant("Loyer", f"loyer_{i}")
+        loyer = montant("Loyer perçu mensuel", f"loyer_{i}")
 
         credit_prev = to_float(st.session_state.get(f"credit_{i}", ""))
         assurance_prev = to_float(st.session_state.get(f"assurance_{i}", ""))
@@ -174,18 +148,18 @@ for i, tab in enumerate(tabs):
 
         afficher_cashflow(loyer - total_prev)
 
-        col1, col2 = st.columns(2, gap="small")
+        st.markdown("### Charges principales")
 
-        with col1:
-            credit = montant("Crédit", f"credit_{i}")
-            taxe_annuelle = montant("Taxe", f"taxe_{i}")
-            electricite = montant("Élec", f"electricite_{i}")
-            imprevu = montant("Imprévu", f"imprevu_{i}")
+        credit = montant("Crédit mensuel", f"credit_{i}")
+        assurance = montant("Assurance mensuelle", f"assurance_{i}")
+        taxe_annuelle = montant("Taxe foncière annuelle", f"taxe_{i}")
+        copro = montant("Charges de copropriété mensuelles", f"copro_{i}")
 
-        with col2:
-            assurance = montant("Assurance", f"assurance_{i}")
-            copro = montant("Copro", f"copro_{i}")
-            gaz = montant("Gaz", f"gaz_{i}")
+        st.markdown("### Charges optionnelles")
+
+        electricite = montant("Électricité mensuelle", f"electricite_{i}")
+        gaz = montant("Gaz mensuel", f"gaz_{i}")
+        imprevu = montant("Imprévu mensuel", f"imprevu_{i}")
 
         taxe_mensuelle = taxe_annuelle / 12
 
@@ -200,6 +174,7 @@ for i, tab in enumerate(tabs):
         )
 
         st.caption(
-            f"Charges : {total_charges:,.0f} € | Taxe/mois : {taxe_mensuelle:,.0f} €"
+            f"Charges mensuelles : {total_charges:,.0f} € | "
+            f"Taxe foncière mensualisée : {taxe_mensuelle:,.0f} €"
             .replace(",", " ")
         )
