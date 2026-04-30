@@ -9,66 +9,77 @@ st.set_page_config(
 st.markdown("""
 <style>
 .block-container {
-    padding: 0.25rem 0.35rem 0.25rem 0.35rem;
+    padding: 0.2rem 0.25rem !important;
+    max-width: 100% !important;
 }
 
 h1 {
-    font-size: 18px !important;
+    font-size: 17px !important;
     margin: 0 !important;
     padding: 0 !important;
 }
 
 button {
-    height: 34px !important;
+    height: 32px !important;
     font-size: 12px !important;
     padding: 0 !important;
 }
 
 div[data-testid="stTabs"] button {
-    height: 30px !important;
-    font-size: 12px !important;
+    height: 28px !important;
+    font-size: 11px !important;
+    padding: 0 6px !important;
 }
 
 div[data-testid="stVerticalBlock"] {
-    gap: 0.15rem !important;
+    gap: 0.05rem !important;
+}
+
+div[data-testid="stHorizontalBlock"] {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 0.25rem !important;
 }
 
 div[data-testid="column"] {
     width: 50% !important;
-    flex: 1 1 50% !important;
-    padding: 0 0.12rem !important;
-}
-
-label {
-    font-size: 11px !important;
-    font-weight: 600 !important;
-}
-
-input {
-    height: 34px !important;
-    font-size: 16px !important;
-    text-align: center !important;
+    min-width: 0 !important;
+    flex: 0 0 calc(50% - 0.15rem) !important;
     padding: 0 !important;
 }
 
+label {
+    font-size: 10px !important;
+    font-weight: 600 !important;
+    line-height: 1 !important;
+}
+
+input {
+    height: 30px !important;
+    font-size: 15px !important;
+    text-align: center !important;
+    padding: 0 2px !important;
+}
+
 .stTextInput {
-    margin-bottom: -0.65rem !important;
+    margin-bottom: -0.8rem !important;
 }
 
 .cashflow-card {
-    padding: 6px;
-    border-radius: 12px;
+    padding: 5px;
+    border-radius: 10px;
     text-align: center;
-    margin: 2px 0 4px 0;
+    margin: 1px 0 3px 0;
 }
 
 .cashflow-title {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
 }
 
 .cashflow-value {
-    font-size: 30px;
+    font-size: 28px;
     font-weight: 800;
     line-height: 1;
 }
@@ -78,7 +89,7 @@ input {
 .neu { background:#f2f4f7; color:#344054; border:2px solid #98a2b3; }
 
 div[data-testid="stCaptionContainer"] {
-    font-size: 10px !important;
+    font-size: 9px !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -148,7 +159,7 @@ for i, tab in enumerate(tabs):
         gaz_prev = to_float(st.session_state.get(f"gaz_{i}", ""))
         imprevu_prev = to_float(st.session_state.get(f"imprevu_{i}", ""))
 
-        charges_prev = (
+        total_prev = (
             credit_prev
             + assurance_prev
             + taxe_prev
@@ -158,20 +169,19 @@ for i, tab in enumerate(tabs):
             + imprevu_prev
         )
 
-        cashflow = loyer - charges_prev
-        afficher_cashflow(cashflow)
+        afficher_cashflow(loyer - total_prev)
 
-        col1, col2 = st.columns(2)
+        col1, col2 = st.columns([1, 1], gap="small")
 
         with col1:
-            credit = montant("Crédit mensuel", f"credit_{i}")
-            taxe_annuelle = montant("Taxe foncière annuelle", f"taxe_{i}")
+            credit = montant("Crédit", f"credit_{i}")
+            taxe_annuelle = montant("Taxe foncière", f"taxe_{i}")
             electricite = montant("Électricité", f"electricite_{i}")
             imprevu = montant("Imprévu", f"imprevu_{i}")
 
         with col2:
-            assurance = montant("Assurance mensuelle", f"assurance_{i}")
-            copro = montant("Copro mensuelle", f"copro_{i}")
+            assurance = montant("Assurance", f"assurance_{i}")
+            copro = montant("Copro", f"copro_{i}")
             gaz = montant("Gaz", f"gaz_{i}")
 
         taxe_mensuelle = taxe_annuelle / 12
@@ -187,6 +197,6 @@ for i, tab in enumerate(tabs):
         )
 
         st.caption(
-            f"Charges : {total_charges:,.0f} € | Taxe mensuelle : {taxe_mensuelle:,.0f} €"
+            f"Charges : {total_charges:,.0f} € | Taxe/mois : {taxe_mensuelle:,.0f} €"
             .replace(",", " ")
         )
