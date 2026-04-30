@@ -137,6 +137,40 @@ button {
     font-weight: 800;
     color: #101828;
 }
+
+.ratio-card {
+    padding: 14px;
+    border-radius: 16px;
+    text-align: center;
+    margin-bottom: 10px;
+    border: 2px solid rgba(0,0,0,0.08);
+}
+
+.ratio-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: #101828;
+}
+
+.ratio-value {
+    font-size: 28px;
+    font-weight: 900;
+    color: #101828;
+    line-height: 1.15;
+}
+
+.ratio-cashflow {
+    font-size: 14px;
+    font-weight: 700;
+    color: #344054;
+    margin-top: 4px;
+}
+
+.ratio-rank {
+    font-size: 12px;
+    color: #667085;
+    margin-top: 2px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -280,6 +314,41 @@ def afficher_metric(titre, valeur):
         <div class="small-metric">
             <div class="small-metric-title">{titre}</div>
             <div class="small-metric-value">{valeur}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+def couleur_ratio(index, total):
+    if total <= 1:
+        return "linear-gradient(135deg, #d9f99d, #22c55e)"
+
+    t = index / (total - 1)
+
+    r1, g1, b1 = 34, 197, 94
+    r2, g2, b2 = 251, 146, 60
+
+    r = int(r1 + (r2 - r1) * t)
+    g = int(g1 + (g2 - g1) * t)
+    b = int(b1 + (b2 - b1) * t)
+
+    return f"rgb({r},{g},{b})"
+
+
+def afficher_ratio_card(nom, ratio, cashflow, rang, total, couleur, prix_achat):
+    if prix_achat <= 0:
+        ratio_txt = "Prix d'achat non renseigné"
+    else:
+        ratio_txt = f"{ratio:.2f} %"
+
+    st.markdown(
+        f"""
+        <div class="ratio-card" style="background:{couleur};">
+            <div class="ratio-name">{nom}</div>
+            <div class="ratio-value">{ratio_txt}</div>
+            <div class="ratio-cashflow">Cashflow : {format_euro(cashflow)} / mois</div>
+            <div class="ratio-rank">Classement : {rang}/{total}</div>
         </div>
         """,
         unsafe_allow_html=True
@@ -490,6 +559,7 @@ if len(biens) > 1:
             ratios_biens.append({
                 "nom": bien.get("nom", "Bien"),
                 "ratio": rendement_cashflow,
+                "cashflow": cashflow,
                 "prix_achat": prix_achat
             })
 
@@ -500,11 +570,35 @@ if len(biens) > 1:
 
         st.markdown("### Ratio cashflow / prix d'achat")
 
-        for item in ratios_biens:
-            if item["prix_achat"] > 0:
-                afficher_metric(item["nom"], f"{item['ratio']:.2f} %")
-            else:
-                afficher_metric(item["nom"], "Prix d'achat non renseigné")
+        ratios_valides = [x for x in ratios_biens if x["prix_achat"] > 0]
+        ratios_invalides = [x for x in ratios_biens if x["prix_achat"] <= 0]
+
+        ratios_valides = sorted(ratios_valides, key=lambda x: x["ratio"], reverse=True)
+
+        total_valides = len(ratios_valides)
+
+        for idx, item in enumerate(ratios_valides):
+            couleur = couleur_ratio(idx, total_valides)
+            afficher_ratio_card(
+                item["nom"],
+                item["ratio"],
+                item["cashflow"],
+                idx + 1,
+                total_valides,
+                couleur,
+                item["prix_achat"]
+            )
+
+        for item in ratios_invalides:
+            afficher_ratio_card(
+                item["nom"],
+                item["ratio"],
+                item["cashflow"],
+                "-",
+                total_valides,
+                "#f2f4f7",
+                item["prix_achat"]
+            )
 
         afficher_metric("Loyer mensuel", format_euro(total_loyer))
         afficher_metric("Loyer annuel", format_euro(total_loyer * 12))
