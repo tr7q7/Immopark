@@ -357,6 +357,46 @@ def afficher_graphique_ratios(ratios_biens):
         )
 
 
+def couleur_cashflow(index, total):
+    return couleur_ratio(index, total)
+
+
+def afficher_graphique_cashflows(ratios_biens):
+    biens_valides = sorted(ratios_biens, key=lambda x: x["cashflow"], reverse=True)
+
+    if not biens_valides:
+        st.info("Aucun bien disponible pour afficher le graphique des cashflows.")
+        return
+
+    noms = [x["nom"] for x in biens_valides]
+    cashflows = [x["cashflow"] for x in biens_valides]
+    couleurs = [couleur_cashflow(i, len(biens_valides)) for i in range(len(biens_valides))]
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Bar(
+        x=noms,
+        y=cashflows,
+        marker_color=couleurs,
+        text=[f"{format_euro(cf)}/mois" for cf in cashflows],
+        textposition="auto"
+    ))
+
+    fig.update_layout(
+        height=320,
+        margin=dict(l=10, r=10, t=20, b=20),
+        yaxis_title="Cashflow mensuel (€)",
+        xaxis_title="",
+        showlegend=False,
+        dragmode=False
+    )
+
+    fig.update_xaxes(fixedrange=True)
+    fig.update_yaxes(fixedrange=True)
+
+    st.plotly_chart(fig, use_container_width=True, config=CHART_CONFIG)
+
+
 def smtp_is_configured():
     required = ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"]
     return all(k in st.secrets for k in required)
@@ -572,6 +612,9 @@ if len(biens) > 1:
 
         st.markdown("### Ratio cashflow / prix d'achat")
         afficher_graphique_ratios(ratios_biens)
+
+        st.markdown("### Cashflow mensuel par bien")
+        afficher_graphique_cashflows(ratios_biens)
 
         afficher_metric("Cashflow annuel", format_euro(total_cashflow * 12))
         afficher_metric("Loyer mensuel", format_euro(total_loyer))
