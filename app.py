@@ -573,6 +573,7 @@ if len(biens) > 1:
         st.markdown("### Ratio cashflow / prix d'achat")
         afficher_graphique_ratios(ratios_biens)
 
+        afficher_metric("Cashflow annuel", format_euro(total_cashflow * 12))
         afficher_metric("Loyer mensuel", format_euro(total_loyer))
         afficher_metric("Loyer annuel", format_euro(total_loyer * 12))
         afficher_metric("Charges mensuelles", format_euro(total_charges))
