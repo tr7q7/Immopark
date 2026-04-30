@@ -8,6 +8,7 @@ import ssl
 import time
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from email.message import EmailMessage
 
 DATA_FILE = "lmnp_data.json"
@@ -136,40 +137,6 @@ button {
     font-size: 25px;
     font-weight: 800;
     color: #101828;
-}
-
-.ratio-card {
-    padding: 14px;
-    border-radius: 16px;
-    text-align: center;
-    margin-bottom: 10px;
-    border: 2px solid rgba(0,0,0,0.08);
-}
-
-.ratio-name {
-    font-size: 14px;
-    font-weight: 700;
-    color: #101828;
-}
-
-.ratio-value {
-    font-size: 28px;
-    font-weight: 900;
-    color: #101828;
-    line-height: 1.15;
-}
-
-.ratio-cashflow {
-    font-size: 14px;
-    font-weight: 700;
-    color: #344054;
-    margin-top: 4px;
-}
-
-.ratio-rank {
-    font-size: 12px;
-    color: #667085;
-    margin-top: 2px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -322,7 +289,7 @@ def afficher_metric(titre, valeur):
 
 def couleur_ratio(index, total):
     if total <= 1:
-        return "linear-gradient(135deg, #d9f99d, #22c55e)"
+        return "rgb(34,197,94)"
 
     t = index / (total - 1)
 
@@ -336,23 +303,52 @@ def couleur_ratio(index, total):
     return f"rgb({r},{g},{b})"
 
 
-def afficher_ratio_card(nom, ratio, cashflow, rang, total, couleur, prix_achat):
-    if prix_achat <= 0:
-        ratio_txt = "Prix d'achat non renseigné"
-    else:
-        ratio_txt = f"{ratio:.2f} %"
+def afficher_graphique_ratios(ratios_biens):
+    ratios_valides = [x for x in ratios_biens if x["prix_achat"] > 0]
+    ratios_invalides = [x for x in ratios_biens if x["prix_achat"] <= 0]
 
-    st.markdown(
-        f"""
-        <div class="ratio-card" style="background:{couleur};">
-            <div class="ratio-name">{nom}</div>
-            <div class="ratio-value">{ratio_txt}</div>
-            <div class="ratio-cashflow">Cashflow : {format_euro(cashflow)} / mois</div>
-            <div class="ratio-rank">Classement : {rang}/{total}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
+    if not ratios_valides:
+        st.info("Renseigne les prix d'achat pour afficher le graphique des ratios.")
+        return
+
+    ratios_valides = sorted(ratios_valides, key=lambda x: x["ratio"], reverse=True)
+
+    noms = [x["nom"] for x in ratios_valides]
+    ratios = [x["ratio"] for x in ratios_valides]
+    cashflows = [x["cashflow"] for x in ratios_valides]
+    couleurs = [couleur_ratio(i, len(ratios_valides)) for i in range(len(ratios_valides))]
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Bar(
+        x=noms,
+        y=ratios,
+        marker_color=couleurs,
+        text=[f"{r:.2f}%<br>{format_euro(cf)}/mois" for r, cf in zip(ratios, cashflows)],
+        textposition="auto",
+        hovertemplate=(
+            "<b>%{x}</b><br>"
+            "Ratio cashflow/prix achat : %{y:.2f}%<br>"
+            "Cashflow mensuel : %{customdata}<extra></extra>"
+        ),
+        customdata=[format_euro(cf) for cf in cashflows]
+    ))
+
+    fig.update_layout(
+        height=320,
+        margin=dict(l=10, r=10, t=20, b=20),
+        yaxis_title="Ratio annuel (%)",
+        xaxis_title="",
+        showlegend=False
     )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    if ratios_invalides:
+        st.caption(
+            "Prix d'achat manquant : "
+            + ", ".join([x["nom"] for x in ratios_invalides])
+        )
 
 
 def smtp_is_configured():
@@ -569,36 +565,7 @@ if len(biens) > 1:
         afficher_cashflow(total_cashflow, "Cashflow global mensuel")
 
         st.markdown("### Ratio cashflow / prix d'achat")
-
-        ratios_valides = [x for x in ratios_biens if x["prix_achat"] > 0]
-        ratios_invalides = [x for x in ratios_biens if x["prix_achat"] <= 0]
-
-        ratios_valides = sorted(ratios_valides, key=lambda x: x["ratio"], reverse=True)
-
-        total_valides = len(ratios_valides)
-
-        for idx, item in enumerate(ratios_valides):
-            couleur = couleur_ratio(idx, total_valides)
-            afficher_ratio_card(
-                item["nom"],
-                item["ratio"],
-                item["cashflow"],
-                idx + 1,
-                total_valides,
-                couleur,
-                item["prix_achat"]
-            )
-
-        for item in ratios_invalides:
-            afficher_ratio_card(
-                item["nom"],
-                item["ratio"],
-                item["cashflow"],
-                "-",
-                total_valides,
-                "#f2f4f7",
-                item["prix_achat"]
-            )
+        afficher_graphique_ratios(ratios_biens)
 
         afficher_metric("Loyer mensuel", format_euro(total_loyer))
         afficher_metric("Loyer annuel", format_euro(total_loyer * 12))
