@@ -14,6 +14,14 @@ from email.message import EmailMessage
 DATA_FILE = "lmnp_data.json"
 SESSION_DURATION = 3600
 
+CHART_CONFIG = {
+    "displayModeBar": False,
+    "staticPlot": True,
+    "scrollZoom": False,
+    "doubleClick": False,
+    "showTips": False,
+}
+
 st.set_page_config(
     page_title="LMNP Cashflow",
     page_icon="🏠",
@@ -325,13 +333,7 @@ def afficher_graphique_ratios(ratios_biens):
         y=ratios,
         marker_color=couleurs,
         text=[f"{r:.2f}%<br>{format_euro(cf)}/mois" for r, cf in zip(ratios, cashflows)],
-        textposition="auto",
-        hovertemplate=(
-            "<b>%{x}</b><br>"
-            "Ratio cashflow/prix achat : %{y:.2f}%<br>"
-            "Cashflow mensuel : %{customdata}<extra></extra>"
-        ),
-        customdata=[format_euro(cf) for cf in cashflows]
+        textposition="auto"
     ))
 
     fig.update_layout(
@@ -339,10 +341,14 @@ def afficher_graphique_ratios(ratios_biens):
         margin=dict(l=10, r=10, t=20, b=20),
         yaxis_title="Ratio annuel (%)",
         xaxis_title="",
-        showlegend=False
+        showlegend=False,
+        dragmode=False
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    fig.update_xaxes(fixedrange=True)
+    fig.update_yaxes(fixedrange=True)
+
+    st.plotly_chart(fig, use_container_width=True, config=CHART_CONFIG)
 
     if ratios_invalides:
         st.caption(
@@ -587,7 +593,8 @@ if len(biens) > 1:
                 values="Montant",
                 hole=0.35
             )
-            st.plotly_chart(fig_pie, use_container_width=True)
+            fig_pie.update_layout(dragmode=False)
+            st.plotly_chart(fig_pie, use_container_width=True, config=CHART_CONFIG)
 
             st.markdown("### Charges par catégorie")
 
@@ -597,7 +604,10 @@ if len(biens) > 1:
                 y="Montant",
                 text="Montant"
             )
-            st.plotly_chart(fig_bar, use_container_width=True)
+            fig_bar.update_layout(dragmode=False)
+            fig_bar.update_xaxes(fixedrange=True)
+            fig_bar.update_yaxes(fixedrange=True)
+            st.plotly_chart(fig_bar, use_container_width=True, config=CHART_CONFIG)
         else:
             st.info("Renseigne les charges pour afficher les graphiques.")
 
