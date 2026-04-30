@@ -160,6 +160,46 @@ def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 
+def create_session(data, email):
+    token = secrets.token_urlsafe(32)
+    data["users"][email]["session_token"] = token
+    data["users"][email]["session_expiry"] = time.time() + SESSION_DURATION
+    save_data(data)
+    st.query_params["session"] = token
+    return token
+
+
+def get_user_from_session(data):
+    token = st.query_params.get("session")
+
+    if not token:
+        return None
+
+    for email, user_data in data["users"].items():
+        if user_data.get("session_token") == token:
+            expiry = user_data.get("session_expiry", 0)
+
+            if time.time() < expiry:
+                return email
+            else:
+                user_data["session_token"] = None
+                user_data["session_expiry"] = None
+                save_data(data)
+                st.query_params.clear()
+                return None
+
+    return None
+
+
+def logout(data, email):
+    if email in data["users"]:
+        data["users"][email]["session_token"] = None
+        data["users"][email]["session_expiry"] = None
+        save_data(data)
+
+    st.query_params.clear()
+
+
 def to_float(value):
     try:
         return float(str(value).replace(",", ".")) if value else 0.0
@@ -289,25 +329,14 @@ LMNP Cashflow
 
 data = load_data()
 
-if "logged_user" not in st.session_state:
-    st.session_state.logged_user = None
-
-if "login_time" not in st.session_state:
-    st.session_state.login_time = None
-
 if "reset_email" not in st.session_state:
     st.session_state.reset_email = None
 
-if st.session_state.logged_user is not None and st.session_state.login_time is not None:
-    if time.time() - st.session_state.login_time > SESSION_DURATION:
-        st.session_state.logged_user = None
-        st.session_state.login_time = None
-        st.warning("Session expirée. Reconnecte-toi.")
-        st.rerun()
+logged_user = get_user_from_session(data)
 
 st.title("LMNP Cashflow")
 
-if st.session_state.logged_user is None:
+if logged_user is None:
     mode = st.radio(
         "Accès",
         ["Connexion", "Créer un compte", "Mot de passe oublié"],
@@ -334,11 +363,11 @@ if st.session_state.logged_user is None:
                 data["users"][email] = {
                     "password": hash_password(password),
                     "reset_code": None,
+                    "session_token": None,
+                    "session_expiry": None,
                     "biens": [default_bien("Bien 1")]
                 }
-                save_data(data)
-                st.session_state.logged_user = email
-                st.session_state.login_time = time.time()
+                create_session(data, email)
                 st.rerun()
 
     elif mode == "Connexion":
@@ -353,8 +382,7 @@ if st.session_state.logged_user is None:
             elif data["users"][email]["password"] != hash_password(password):
                 st.error("Mot de passe incorrect.")
             else:
-                st.session_state.logged_user = email
-                st.session_state.login_time = time.time()
+                create_session(data, email)
                 st.rerun()
 
     elif mode == "Mot de passe oublié":
@@ -411,7 +439,7 @@ if st.session_state.logged_user is None:
     st.stop()
 
 
-user = st.session_state.logged_user
+user = logged_user
 user_data = data["users"][user]
 
 if "biens" not in user_data or len(user_data["biens"]) == 0:
@@ -420,8 +448,7 @@ if "biens" not in user_data or len(user_data["biens"]) == 0:
 
 st.markdown('<div class="top-right-button">', unsafe_allow_html=True)
 if st.button("Déconnexion"):
-    st.session_state.logged_user = None
-    st.session_state.login_time = None
+    logout(data, user)
     st.rerun()
 st.markdown('</div>', unsafe_allow_html=True)
 
