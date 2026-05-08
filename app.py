@@ -1,18 +1,10 @@
 import streamlit as st
-import json
-import os
-import hashlib
-import secrets
-import smtplib
-import ssl
-import time
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from email.message import EmailMessage
+from supabase import create_client, Client
 
-DATA_FILE = "lmnp_data.json"
-SESSION_DURATION = 3600
+SESSION_DURATION_SECONDS = 3600
 
 CHART_CONFIG = {
     "displayModeBar": False,
@@ -150,68 +142,20 @@ button {
 """, unsafe_allow_html=True)
 
 
-def load_data():
-    if not os.path.exists(DATA_FILE):
-        return {"users": {}}
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {"users": {}}
+@st.cache_resource
+def init_supabase() -> Client:
+    return create_client(
+        st.secrets["SUPABASE_URL"],
+        st.secrets["SUPABASE_ANON_KEY"]
+    )
 
 
-def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
-
-
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
-
-
-def create_session(data, email):
-    token = secrets.token_urlsafe(32)
-    data["users"][email]["session_token"] = token
-    data["users"][email]["session_expiry"] = time.time() + SESSION_DURATION
-    save_data(data)
-    st.query_params["session"] = token
-    return token
-
-
-def get_user_from_session(data):
-    token = st.query_params.get("session")
-
-    if not token:
-        return None
-
-    for email, user_data in data["users"].items():
-        if user_data.get("session_token") == token:
-            expiry = user_data.get("session_expiry", 0)
-
-            if time.time() < expiry:
-                return email
-            else:
-                user_data["session_token"] = None
-                user_data["session_expiry"] = None
-                save_data(data)
-                st.query_params.clear()
-                return None
-
-    return None
-
-
-def logout(data, email):
-    if email in data["users"]:
-        data["users"][email]["session_token"] = None
-        data["users"][email]["session_expiry"] = None
-        save_data(data)
-
-    st.query_params.clear()
+supabase = init_supabase()
 
 
 def to_float(value):
     try:
-        return float(str(value).replace(",", ".")) if value else 0.0
+        return float(str(value).replace(",", ".")) if value not in [None, ""] else 0.0
     except ValueError:
         return 0.0
 
@@ -220,31 +164,32 @@ def format_euro(value):
     return f"{value:,.0f} €".replace(",", " ")
 
 
-def default_bien(nom):
+def default_property(user_id, nom):
     return {
+        "user_id": user_id,
         "nom": nom,
-        "prix_achat_total": "",
-        "loyer": "",
-        "credit": "",
-        "assurance": "",
-        "taxe": "",
-        "copro": "",
-        "electricite": "",
-        "gaz": "",
-        "imprevu": ""
+        "prix_achat_total": 0,
+        "loyer": 0,
+        "credit": 0,
+        "assurance": 0,
+        "taxe": 0,
+        "copro": 0,
+        "electricite": 0,
+        "gaz": 0,
+        "imprevu": 0,
     }
 
 
 def calcul_bien(bien):
-    loyer = to_float(bien.get("loyer", 0))
-    prix_achat_total = to_float(bien.get("prix_achat_total", 0))
-    credit = to_float(bien.get("credit", 0))
-    assurance = to_float(bien.get("assurance", 0))
-    taxe_mensuelle = to_float(bien.get("taxe", 0)) / 12
-    copro = to_float(bien.get("copro", 0))
-    electricite = to_float(bien.get("electricite", 0))
-    gaz = to_float(bien.get("gaz", 0))
-    imprevu = to_float(bien.get("imprevu", 0))
+    loyer = to_float(bien.get("loyer"))
+    prix_achat_total = to_float(bien.get("prix_achat_total"))
+    credit = to_float(bien.get("credit"))
+    assurance = to_float(bien.get("assurance"))
+    taxe_mensuelle = to_float(bien.get("taxe")) / 12
+    copro = to_float(bien.get("copro"))
+    electricite = to_float(bien.get("electricite"))
+    gaz = to_float(bien.get("gaz"))
+    imprevu = to_float(bien.get("imprevu"))
 
     charges = {
         "Crédit": credit,
@@ -259,9 +204,21 @@ def calcul_bien(bien):
     total_charges = sum(charges.values())
     cashflow = loyer - total_charges
     cashflow_annuel = cashflow * 12
-    rendement_cashflow = (cashflow_annuel / prix_achat_total * 100) if prix_achat_total > 0 else 0
+    rendement_cashflow = (
+        cashflow_annuel / prix_achat_total * 100
+        if prix_achat_total > 0
+        else 0
+    )
 
-    return loyer, charges, total_charges, cashflow, cashflow_annuel, prix_achat_total, rendement_cashflow
+    return (
+        loyer,
+        charges,
+        total_charges,
+        cashflow,
+        cashflow_annuel,
+        prix_achat_total,
+        rendement_cashflow,
+    )
 
 
 def afficher_cashflow(value, titre="Cashflow mensuel"):
@@ -279,7 +236,7 @@ def afficher_cashflow(value, titre="Cashflow mensuel"):
             <div class="cashflow-value">{format_euro(value)}</div>
         </div>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
 
@@ -291,7 +248,7 @@ def afficher_metric(titre, valeur):
             <div class="small-metric-value">{valeur}</div>
         </div>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
 
@@ -332,7 +289,10 @@ def afficher_graphique_ratios(ratios_biens):
         x=noms,
         y=ratios,
         marker_color=couleurs,
-        text=[f"{r:.2f}%<br>{format_euro(cf)}/mois" for r, cf in zip(ratios, cashflows)],
+        text=[
+            f"{r:.2f}%<br>{format_euro(cf)}/mois"
+            for r, cf in zip(ratios, cashflows)
+        ],
         textposition="auto"
     ))
 
@@ -357,20 +317,16 @@ def afficher_graphique_ratios(ratios_biens):
         )
 
 
-def couleur_cashflow(index, total):
-    return couleur_ratio(index, total)
-
-
 def afficher_graphique_cashflows(ratios_biens):
     biens_valides = sorted(ratios_biens, key=lambda x: x["cashflow"], reverse=True)
 
     if not biens_valides:
-        st.info("Aucun bien disponible pour afficher le graphique des cashflows.")
+        st.info("Aucun bien disponible.")
         return
 
     noms = [x["nom"] for x in biens_valides]
     cashflows = [x["cashflow"] for x in biens_valides]
-    couleurs = [couleur_cashflow(i, len(biens_valides)) for i in range(len(biens_valides))]
+    couleurs = [couleur_ratio(i, len(biens_valides)) for i in range(len(biens_valides))]
 
     fig = go.Figure()
 
@@ -397,57 +353,72 @@ def afficher_graphique_cashflows(ratios_biens):
     st.plotly_chart(fig, use_container_width=True, config=CHART_CONFIG)
 
 
-def smtp_is_configured():
-    required = ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"]
-    return all(k in st.secrets for k in required)
+def save_session(session):
+    st.query_params["access_token"] = session.access_token
+    st.query_params["refresh_token"] = session.refresh_token
 
 
-def send_reset_email(to_email, reset_code):
-    if not smtp_is_configured():
-        return False
+def clear_session():
+    st.query_params.clear()
 
-    msg = EmailMessage()
-    msg["Subject"] = "Réinitialisation mot de passe - LMNP Cashflow"
-    msg["From"] = st.secrets["SMTP_FROM"]
-    msg["To"] = to_email
 
-    msg.set_content(
-        f"""
-Bonjour,
+def get_current_user():
+    access_token = st.query_params.get("access_token")
+    refresh_token = st.query_params.get("refresh_token")
 
-Voici votre code de réinitialisation :
+    if not access_token or not refresh_token:
+        return None
 
-{reset_code}
+    try:
+        supabase.auth.set_session(access_token, refresh_token)
+        user_response = supabase.auth.get_user()
+        return user_response.user
+    except Exception:
+        clear_session()
+        return None
 
-Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.
 
-LMNP Cashflow
-"""
+def create_profile_if_needed(user):
+    existing = (
+        supabase.table("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .execute()
     )
 
-    context = ssl.create_default_context()
-
-    with smtplib.SMTP_SSL(
-        st.secrets["SMTP_HOST"],
-        int(st.secrets["SMTP_PORT"]),
-        context=context
-    ) as server:
-        server.login(st.secrets["SMTP_USER"], st.secrets["SMTP_PASSWORD"])
-        server.send_message(msg)
-
-    return True
+    if not existing.data:
+        supabase.table("profiles").insert({
+            "id": user.id,
+            "email": user.email
+        }).execute()
 
 
-data = load_data()
+def load_properties(user_id):
+    result = (
+        supabase.table("properties")
+        .select("*")
+        .eq("user_id", user_id)
+        .order("created_at")
+        .execute()
+    )
+    return result.data or []
 
-if "reset_email" not in st.session_state:
-    st.session_state.reset_email = None
 
-logged_user = get_user_from_session(data)
+def create_property(user_id, nom):
+    supabase.table("properties").insert(
+        default_property(user_id, nom)
+    ).execute()
+
+
+def update_property(property_id, values):
+    supabase.table("properties").update(values).eq("id", property_id).execute()
+
 
 st.title("LMNP Cashflow")
 
-if logged_user is None:
+user = get_current_user()
+
+if user is None:
     mode = st.radio(
         "Accès",
         ["Connexion", "Créer un compte", "Mot de passe oublié"],
@@ -468,18 +439,24 @@ if logged_user is None:
                 st.error("Mot de passe obligatoire.")
             elif password != password_confirm:
                 st.error("Les mots de passe ne correspondent pas.")
-            elif email in data["users"]:
-                st.error("Un compte existe déjà avec cet email.")
             else:
-                data["users"][email] = {
-                    "password": hash_password(password),
-                    "reset_code": None,
-                    "session_token": None,
-                    "session_expiry": None,
-                    "biens": [default_bien("Bien 1")]
-                }
-                create_session(data, email)
-                st.rerun()
+                try:
+                    response = supabase.auth.sign_up({
+                        "email": email,
+                        "password": password
+                    })
+
+                    if response.session:
+                        save_session(response.session)
+                        create_profile_if_needed(response.user)
+                        create_property(response.user.id, "Bien 1")
+                        st.rerun()
+                    else:
+                        st.success(
+                            "Compte créé. Vérifie ton email si Supabase demande une confirmation."
+                        )
+                except Exception as e:
+                    st.error(f"Erreur création compte : {e}")
 
     elif mode == "Connexion":
         email = st.text_input("Email")
@@ -488,87 +465,60 @@ if logged_user is None:
         if st.button("Se connecter"):
             email = email.strip().lower()
 
-            if email not in data["users"]:
-                st.error("Compte introuvable.")
-            elif data["users"][email]["password"] != hash_password(password):
-                st.error("Mot de passe incorrect.")
-            else:
-                create_session(data, email)
+            try:
+                response = supabase.auth.sign_in_with_password({
+                    "email": email,
+                    "password": password
+                })
+
+                save_session(response.session)
+                create_profile_if_needed(response.user)
+
+                properties = load_properties(response.user.id)
+                if len(properties) == 0:
+                    create_property(response.user.id, "Bien 1")
+
                 st.rerun()
+
+            except Exception:
+                st.error("Email ou mot de passe incorrect.")
 
     elif mode == "Mot de passe oublié":
         email = st.text_input("Email du compte")
 
-        if st.button("Recevoir un code"):
+        if st.button("Recevoir un email de réinitialisation"):
             email = email.strip().lower()
 
-            if email not in data["users"]:
-                st.error("Compte introuvable.")
-            else:
-                reset_code = str(secrets.randbelow(900000) + 100000)
-                data["users"][email]["reset_code"] = reset_code
-                save_data(data)
-
-                try:
-                    sent = send_reset_email(email, reset_code)
-                    st.session_state.reset_email = email
-
-                    if sent:
-                        st.success("Code envoyé par email.")
-                    else:
-                        st.warning(f"SMTP non configuré. Code de test : {reset_code}")
-                except Exception:
-                    st.session_state.reset_email = email
-                    st.warning(f"Impossible d'envoyer l'email. Code de test : {reset_code}")
-
-        if st.session_state.reset_email:
-            st.markdown("### Réinitialiser le mot de passe")
-
-            code = st.text_input("Code reçu")
-            new_password = st.text_input("Nouveau mot de passe", type="password")
-            new_password_confirm = st.text_input("Confirmer le nouveau mot de passe", type="password")
-
-            if st.button("Changer le mot de passe"):
-                email_reset = st.session_state.reset_email
-
-                if email_reset not in data["users"]:
-                    st.error("Compte introuvable.")
-                elif code != data["users"][email_reset].get("reset_code"):
-                    st.error("Code incorrect.")
-                elif not new_password:
-                    st.error("Mot de passe obligatoire.")
-                elif new_password != new_password_confirm:
-                    st.error("Les mots de passe ne correspondent pas.")
-                else:
-                    data["users"][email_reset]["password"] = hash_password(new_password)
-                    data["users"][email_reset]["reset_code"] = None
-                    save_data(data)
-
-                    st.session_state.reset_email = None
-                    st.success("Mot de passe modifié. Tu peux te connecter.")
+            try:
+                supabase.auth.reset_password_email(email)
+                st.success("Email de réinitialisation envoyé si le compte existe.")
+            except Exception as e:
+                st.error(f"Erreur : {e}")
 
     st.stop()
 
 
-user = logged_user
-user_data = data["users"][user]
-
-if "biens" not in user_data or len(user_data["biens"]) == 0:
-    user_data["biens"] = [default_bien("Bien 1")]
-    save_data(data)
+create_profile_if_needed(user)
 
 st.markdown('<div class="top-right-button">', unsafe_allow_html=True)
 if st.button("Déconnexion"):
-    logout(data, user)
+    try:
+        supabase.auth.sign_out()
+    except Exception:
+        pass
+    clear_session()
     st.rerun()
 st.markdown('</div>', unsafe_allow_html=True)
 
-biens = user_data["biens"]
+biens = load_properties(user.id)
+
+if len(biens) == 0:
+    create_property(user.id, "Bien 1")
+    st.rerun()
 
 st.markdown('<div class="bottom-plus">', unsafe_allow_html=True)
 if st.button("+"):
-    user_data["biens"].append(default_bien(f"Bien {len(user_data['biens']) + 1}"))
-    save_data(data)
+    create_property(user.id, f"Bien {len(biens) + 1}")
     st.rerun()
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -592,7 +542,15 @@ if len(biens) > 1:
         ratios_biens = []
 
         for bien in biens:
-            loyer, charges, charges_total, cashflow, cashflow_annuel, prix_achat, rendement_cashflow = calcul_bien(bien)
+            (
+                loyer,
+                charges,
+                charges_total,
+                cashflow,
+                cashflow_annuel,
+                prix_achat,
+                rendement_cashflow
+            ) = calcul_bien(bien)
 
             total_loyer += loyer
             total_charges += charges_total
@@ -652,18 +610,21 @@ if len(biens) > 1:
             fig_bar.update_xaxes(fixedrange=True)
             fig_bar.update_yaxes(fixedrange=True)
             st.plotly_chart(fig_bar, use_container_width=True, config=CHART_CONFIG)
-        else:
-            st.info("Renseigne les charges pour afficher les graphiques.")
 
     tab_index = 1
 
 
 for i, bien in enumerate(biens):
-    if "prix_achat_total" not in bien:
-        bien["prix_achat_total"] = ""
-
     with tabs[tab_index + i]:
-        loyer, charges, total_charges, cashflow, cashflow_annuel, prix_achat_total, rendement_cashflow = calcul_bien(bien)
+        (
+            loyer,
+            charges,
+            total_charges,
+            cashflow,
+            cashflow_annuel,
+            prix_achat_total,
+            rendement_cashflow
+        ) = calcul_bien(bien)
 
         afficher_cashflow(cashflow)
 
@@ -673,96 +634,100 @@ for i, bien in enumerate(biens):
         nouveau_nom = st.text_input(
             "Nom du bien",
             value=bien.get("nom", f"Bien {i + 1}"),
-            key=f"nom_{i}"
+            key=f"nom_{bien['id']}"
         )
 
         prix_achat_input = st.text_input(
             "Prix d'achat total avec travaux",
-            value=str(bien.get("prix_achat_total", "")),
+            value=str(bien.get("prix_achat_total") or ""),
             placeholder="Montant total en €",
-            key=f"prix_achat_total_{i}"
+            key=f"prix_achat_total_{bien['id']}"
         )
 
         st.markdown("### Revenus")
 
         loyer_input = st.text_input(
             "Loyer perçu mensuel",
-            value=str(bien.get("loyer", "")),
+            value=str(bien.get("loyer") or ""),
             placeholder="Montant en €",
-            key=f"loyer_{i}"
+            key=f"loyer_{bien['id']}"
         )
 
         st.markdown("### Charges principales")
 
         credit_input = st.text_input(
             "Crédit mensuel",
-            value=str(bien.get("credit", "")),
+            value=str(bien.get("credit") or ""),
             placeholder="Montant en €",
-            key=f"credit_{i}"
+            key=f"credit_{bien['id']}"
         )
 
         assurance_input = st.text_input(
             "Assurance mensuelle",
-            value=str(bien.get("assurance", "")),
+            value=str(bien.get("assurance") or ""),
             placeholder="Montant en €",
-            key=f"assurance_{i}"
+            key=f"assurance_{bien['id']}"
         )
 
         taxe_input = st.text_input(
             "Taxe foncière annuelle",
-            value=str(bien.get("taxe", "")),
+            value=str(bien.get("taxe") or ""),
             placeholder="Montant annuel en €",
-            key=f"taxe_{i}"
+            key=f"taxe_{bien['id']}"
         )
 
         copro_input = st.text_input(
             "Charges de copropriété mensuelles",
-            value=str(bien.get("copro", "")),
+            value=str(bien.get("copro") or ""),
             placeholder="Montant en €",
-            key=f"copro_{i}"
+            key=f"copro_{bien['id']}"
         )
 
         st.markdown("### Charges optionnelles")
 
         electricite_input = st.text_input(
             "Électricité mensuelle",
-            value=str(bien.get("electricite", "")),
+            value=str(bien.get("electricite") or ""),
             placeholder="Montant en €",
-            key=f"electricite_{i}"
+            key=f"electricite_{bien['id']}"
         )
 
         gaz_input = st.text_input(
             "Gaz mensuel",
-            value=str(bien.get("gaz", "")),
+            value=str(bien.get("gaz") or ""),
             placeholder="Montant en €",
-            key=f"gaz_{i}"
+            key=f"gaz_{bien['id']}"
         )
 
         imprevu_input = st.text_input(
             "Imprévu mensuel",
-            value=str(bien.get("imprevu", "")),
+            value=str(bien.get("imprevu") or ""),
             placeholder="Montant en €",
-            key=f"imprevu_{i}"
+            key=f"imprevu_{bien['id']}"
         )
 
         st.caption(
             f"Charges mensuelles : {format_euro(total_charges)} | "
-            f"Taxe foncière mensualisée : {format_euro(to_float(bien.get('taxe', 0)) / 12)} | "
+            f"Taxe foncière mensualisée : {format_euro(to_float(bien.get('taxe')) / 12)} | "
             f"Cashflow annuel : {format_euro(cashflow_annuel)}"
         )
 
-        if st.button("💾 Sauvegarder", key=f"save_{i}"):
-            bien["nom"] = nouveau_nom if nouveau_nom else f"Bien {i + 1}"
-            bien["prix_achat_total"] = prix_achat_input
-            bien["loyer"] = loyer_input
-            bien["credit"] = credit_input
-            bien["assurance"] = assurance_input
-            bien["taxe"] = taxe_input
-            bien["copro"] = copro_input
-            bien["electricite"] = electricite_input
-            bien["gaz"] = gaz_input
-            bien["imprevu"] = imprevu_input
+        if st.button("💾 Sauvegarder", key=f"save_{bien['id']}"):
+            update_property(
+                bien["id"],
+                {
+                    "nom": nouveau_nom if nouveau_nom else f"Bien {i + 1}",
+                    "prix_achat_total": to_float(prix_achat_input),
+                    "loyer": to_float(loyer_input),
+                    "credit": to_float(credit_input),
+                    "assurance": to_float(assurance_input),
+                    "taxe": to_float(taxe_input),
+                    "copro": to_float(copro_input),
+                    "electricite": to_float(electricite_input),
+                    "gaz": to_float(gaz_input),
+                    "imprevu": to_float(imprevu_input),
+                }
+            )
 
-            save_data(data)
             st.success("Bien sauvegardé.")
             st.rerun()
