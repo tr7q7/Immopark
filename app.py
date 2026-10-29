@@ -1,3 +1,4 @@
+import html
 import json
 from urllib.parse import unquote
 
@@ -27,122 +28,58 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-.block-container {
-    padding-top: 0.8rem;
-    padding-left: 1rem;
-    padding-right: 1rem;
-    max-width: 560px;
+.block-container { padding: 0.8rem 0.8rem 4rem; max-width: 560px; }
+h1 { font-size: 24px !important; text-align: center; margin-bottom: 0.4rem; }
+h3 { font-size: 18px !important; margin-top: 1.2rem !important; }
+
+/* Champs : 18px minimum évite le zoom automatique sur iPhone */
+input { height: 48px !important; font-size: 18px !important; text-align: center !important; }
+label { font-size: 15px !important; font-weight: 600 !important; }
+
+/* Boutons : grandes cibles tactiles */
+.stButton button, .stFormSubmitButton button, .stDownloadButton button {
+    min-height: 48px; font-size: 15px; width: 100%;
 }
 
-h1 {
-    font-size: 25px !important;
-    text-align: center;
-    margin-bottom: 0.4rem;
-}
+/* Les colonnes restent côte à côte sur mobile (utilisées uniquement pour la barre du haut) */
+div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; gap: 0.5rem !important; }
+div[data-testid="stHorizontalBlock"] > div { min-width: 0 !important; }
 
-input {
-    height: 48px !important;
-    font-size: 21px !important;
-    text-align: center !important;
-}
+/* Onglets : faciles à toucher, défilement horizontal natif */
+button[data-baseweb="tab"] { padding: 10px 14px !important; font-size: 15px !important; }
 
-label {
-    font-size: 15px !important;
-    font-weight: 600 !important;
-}
+.cashflow-card { padding: 16px; border-radius: 18px; text-align: center; margin: 12px 0; }
+.cashflow-title { font-size: 15px; font-weight: 600; }
+.cashflow-value { font-size: 40px; font-weight: 800; line-height: 1.1; }
+.pos { background: #e8f7ee; color: #127333; border: 2px solid #2ea44f; }
+.neg { background: #fdeaea; color: #b42318; border: 2px solid #d92d20; }
+.neu { background: #f2f4f7; color: #344054; border: 2px solid #98a2b3; }
 
-button {
-    height: 44px !important;
-    font-size: 15px !important;
-}
+.metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
+.small-metric { padding: 10px; border-radius: 14px; background: #f8f9fb; border: 1px solid #e5e7eb; text-align: center; margin-bottom: 10px; }
+.metric-grid .small-metric { margin-bottom: 0; }
+.small-metric-title { font-size: 12px; color: #667085; font-weight: 600; }
+.small-metric-value { font-size: 22px; font-weight: 800; color: #101828; }
+.small-metric-value.neg-text { color: #d92d20; }
 
-.top-right-button {
-    position: fixed;
-    top: 8px;
-    right: 10px;
-    z-index: 9999;
+/* Camemberts par bien : bande qui se fait glisser vers la gauche */
+.pie-strip {
+    display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch; padding: 4px 2px 12px; margin: 0 -2px;
 }
-
-.top-right-button button {
-    width: auto !important;
-    height: 30px !important;
-    font-size: 11px !important;
-    padding: 2px 8px !important;
-    opacity: 0.75;
+.pie-card {
+    flex: 0 0 84%; scroll-snap-align: start; box-sizing: border-box;
+    background: #f8f9fb; border: 1px solid #e5e7eb; border-radius: 16px; padding: 12px;
 }
-
-.bottom-plus {
-    position: fixed;
-    bottom: 18px;
-    right: 18px;
-    z-index: 9999;
-}
-
-.bottom-plus button {
-    width: 54px !important;
-    height: 54px !important;
-    border-radius: 50% !important;
-    font-size: 28px !important;
-    font-weight: 700 !important;
-    padding: 0 !important;
-}
-
-.cashflow-card {
-    padding: 18px;
-    border-radius: 18px;
-    text-align: center;
-    margin: 14px 0;
-}
-
-.cashflow-title {
-    font-size: 16px;
-    font-weight: 600;
-}
-
-.cashflow-value {
-    font-size: 44px;
-    font-weight: 800;
-    line-height: 1.1;
-}
-
-.pos {
-    background: #e8f7ee;
-    color: #127333;
-    border: 2px solid #2ea44f;
-}
-
-.neg {
-    background: #fdeaea;
-    color: #b42318;
-    border: 2px solid #d92d20;
-}
-
-.neu {
-    background: #f2f4f7;
-    color: #344054;
-    border: 2px solid #98a2b3;
-}
-
-.small-metric {
-    padding: 12px;
-    border-radius: 14px;
-    background: #f8f9fb;
-    border: 1px solid #e5e7eb;
-    text-align: center;
-    margin-bottom: 10px;
-}
-
-.small-metric-title {
-    font-size: 13px;
-    color: #667085;
-    font-weight: 600;
-}
-
-.small-metric-value {
-    font-size: 25px;
-    font-weight: 800;
-    color: #101828;
-}
+.pie-title { font-weight: 700; font-size: 16px; text-align: center; color: #101828; overflow-wrap: anywhere; }
+.pie-sub { font-size: 12px; color: #667085; text-align: center; margin-bottom: 4px; }
+.pie-card svg { width: 100%; max-width: 210px; display: block; margin: 0 auto 6px; }
+.legend-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 0; color: #344054; }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.legend-name { flex: 1; }
+.legend-val { font-weight: 600; white-space: nowrap; }
+.pie-alert { margin-top: 8px; font-size: 13px; font-weight: 600; color: #d92d20; text-align: center; }
+.pie-empty { font-size: 13px; color: #667085; text-align: center; padding: 30px 6px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -389,16 +326,39 @@ def afficher_cashflow(value, titre="Cashflow mensuel"):
     )
 
 
+ROUGE = "#d92d20"
+TEXTE_NEUTRE = "#344054"
+
+COULEURS_CHARGES = {
+    "Crédit": "#2563eb",
+    "Assurance": "#7c3aed",
+    "Taxe foncière": "#f59e0b",
+    "Copropriété": "#0891b2",
+    "Électricité": "#eab308",
+    "Gaz": "#f97316",
+    "Imprévu": "#64748b",
+    "Cashflow": "#22c55e",
+}
+
+
 def afficher_metric(titre, valeur):
     st.markdown(
-        f"""
-        <div class="small-metric">
-            <div class="small-metric-title">{titre}</div>
-            <div class="small-metric-value">{valeur}</div>
-        </div>
-        """,
+        f'<div class="small-metric"><div class="small-metric-title">{titre}</div>'
+        f'<div class="small-metric-value">{valeur}</div></div>',
         unsafe_allow_html=True,
     )
+
+
+def afficher_metrics_grid(items):
+    """items = [(titre, valeur_texte, en_rouge), ...] affichés en 2 colonnes."""
+    cases = []
+    for titre, valeur, en_rouge in items:
+        cls = " neg-text" if en_rouge else ""
+        cases.append(
+            f'<div class="small-metric"><div class="small-metric-title">{titre}</div>'
+            f'<div class="small-metric-value{cls}">{valeur}</div></div>'
+        )
+    st.markdown('<div class="metric-grid">' + "".join(cases) + "</div>", unsafe_allow_html=True)
 
 
 def couleur_ratio(index, total):
@@ -417,89 +377,215 @@ def couleur_ratio(index, total):
     return f"rgb({r},{g},{b})"
 
 
-def afficher_graphique_ratios(ratios_biens):
-    ratios_valides = [x for x in ratios_biens if x["prix_achat"] > 0]
-    ratios_invalides = [x for x in ratios_biens if x["prix_achat"] <= 0]
+def plage_y(valeurs):
+    """Axe Y avec de la marge pour que les libellés (au-dessus / en dessous des barres) ne soient pas coupés."""
+    bas = min([0] + valeurs)
+    haut = max([0] + valeurs)
+    ecart = (haut - bas) or 1
+    return [bas - ecart * 0.3 if bas < 0 else 0, haut + ecart * 0.3]
 
-    if not ratios_valides:
+
+def mettre_en_forme_barres(fig, noms, valeurs, titre_y):
+    fig.add_hline(y=0, line_width=1, line_color="#98a2b3")
+    fig.update_layout(
+        height=340,
+        margin=dict(l=10, r=10, t=30, b=20),
+        yaxis_title=titre_y,
+        xaxis_title="",
+        showlegend=False,
+        dragmode=False,
+    )
+    fig.update_xaxes(
+        fixedrange=True,
+        tickangle=-30 if len(noms) > 3 else 0,
+        automargin=True,
+    )
+    fig.update_yaxes(fixedrange=True, range=plage_y(valeurs), zeroline=False)
+
+
+def afficher_graphique_ratios(ratios_biens):
+    valides = sorted(
+        [x for x in ratios_biens if x["prix_achat"] > 0],
+        key=lambda x: x["ratio"],
+        reverse=True,
+    )
+    sans_prix = [x for x in ratios_biens if x["prix_achat"] <= 0]
+    sans_prix_negatifs = [x for x in sans_prix if x["cashflow"] < 0]
+    sans_prix_autres = [x for x in sans_prix if x["cashflow"] >= 0]
+
+    if not valides and not sans_prix_negatifs:
         st.info("Renseigne les prix d'achat pour afficher le graphique des ratios.")
         return
 
-    ratios_valides = sorted(ratios_valides, key=lambda x: x["ratio"], reverse=True)
+    nb_positifs = len([x for x in valides if x["cashflow"] >= 0])
+    noms, ratios, couleurs, textes, couleurs_textes = [], [], [], [], []
+    rang = 0
 
-    noms = [x["nom"] for x in ratios_valides]
-    ratios = [x["ratio"] for x in ratios_valides]
-    cashflows = [x["cashflow"] for x in ratios_valides]
-    couleurs = [couleur_ratio(i, len(ratios_valides)) for i in range(len(ratios_valides))]
+    for x in valides:
+        negatif = x["cashflow"] < 0
+        if negatif:
+            couleurs.append(ROUGE)
+        else:
+            couleurs.append(couleur_ratio(rang, nb_positifs))
+            rang += 1
+        noms.append(x["nom"])
+        ratios.append(x["ratio"])
+        textes.append(f"{x['ratio']:.2f}%<br>{format_euro(x['cashflow'])}/mois")
+        couleurs_textes.append(ROUGE if negatif else TEXTE_NEUTRE)
+
+    # Biens en déficit mais sans prix d'achat : visibles quand même (barre à 0, montant en rouge)
+    for x in sans_prix_negatifs:
+        noms.append(x["nom"])
+        ratios.append(0)
+        couleurs.append(ROUGE)
+        textes.append(f"n/d<br>{format_euro(x['cashflow'])}/mois")
+        couleurs_textes.append(ROUGE)
 
     fig = go.Figure()
-
     fig.add_trace(go.Bar(
         x=noms,
         y=ratios,
         marker_color=couleurs,
-        text=[
-            f"{r:.2f}%<br>{format_euro(cf)}/mois"
-            for r, cf in zip(ratios, cashflows)
-        ],
-        textposition="auto"
+        text=textes,
+        textposition="outside",
+        textfont=dict(color=couleurs_textes, size=12),
+        cliponaxis=False,
     ))
+    mettre_en_forme_barres(fig, noms, ratios, "Ratio annuel (%)")
+    st.plotly_chart(fig, config=CHART_CONFIG)
 
-    fig.update_layout(
-        height=320,
-        margin=dict(l=10, r=10, t=20, b=20),
-        yaxis_title="Ratio annuel (%)",
-        xaxis_title="",
-        showlegend=False,
-        dragmode=False
-    )
-
-    fig.update_xaxes(fixedrange=True)
-    fig.update_yaxes(fixedrange=True)
-
-    st.plotly_chart(fig, use_container_width=True, config=CHART_CONFIG)
-
-    if ratios_invalides:
-        st.caption(
-            "Prix d'achat manquant : "
-            + ", ".join([x["nom"] for x in ratios_invalides])
-        )
+    manquants = [x["nom"] for x in sans_prix_negatifs + sans_prix_autres]
+    if manquants:
+        st.caption("Prix d'achat manquant : " + ", ".join(manquants))
 
 
 def afficher_graphique_cashflows(ratios_biens):
-    biens_valides = sorted(ratios_biens, key=lambda x: x["cashflow"], reverse=True)
+    biens_tries = sorted(ratios_biens, key=lambda x: x["cashflow"], reverse=True)
 
-    if not biens_valides:
+    if not biens_tries:
         st.info("Aucun bien disponible.")
         return
 
-    noms = [x["nom"] for x in biens_valides]
-    cashflows = [x["cashflow"] for x in biens_valides]
-    couleurs = [couleur_ratio(i, len(biens_valides)) for i in range(len(biens_valides))]
+    nb_positifs = len([x for x in biens_tries if x["cashflow"] >= 0])
+    noms, cashflows, couleurs, couleurs_textes = [], [], [], []
+    rang = 0
+
+    for x in biens_tries:
+        negatif = x["cashflow"] < 0
+        if negatif:
+            couleurs.append(ROUGE)
+        else:
+            couleurs.append(couleur_ratio(rang, nb_positifs))
+            rang += 1
+        noms.append(x["nom"])
+        cashflows.append(x["cashflow"])
+        couleurs_textes.append(ROUGE if negatif else TEXTE_NEUTRE)
 
     fig = go.Figure()
-
     fig.add_trace(go.Bar(
         x=noms,
         y=cashflows,
         marker_color=couleurs,
         text=[f"{format_euro(cf)}/mois" for cf in cashflows],
-        textposition="auto"
+        textposition="outside",
+        textfont=dict(color=couleurs_textes, size=12),
+        cliponaxis=False,
     ))
+    mettre_en_forme_barres(fig, noms, cashflows, "Cashflow mensuel (€)")
+    st.plotly_chart(fig, config=CHART_CONFIG)
 
-    fig.update_layout(
-        height=320,
-        margin=dict(l=10, r=10, t=20, b=20),
-        yaxis_title="Cashflow mensuel (€)",
-        xaxis_title="",
-        showlegend=False,
-        dragmode=False
+
+def donut_svg(parts, total, centre_valeur, centre_rouge):
+    """Anneau SVG : chaque part = (nom, montant, couleur). total = ce que représente 100 % de l'anneau."""
+    r = 15.9155  # circonférence = 100 -> les longueurs de tirets sont directement des %
+    elements = [
+        f'<circle cx="21" cy="21" r="{r}" fill="none" stroke="#e5e7eb" stroke-width="6"/>'
+    ]
+    decalage = 0.0
+    for _nom, montant, couleur in parts:
+        if montant <= 0 or total <= 0:
+            continue
+        pct = montant / total * 100
+        elements.append(
+            f'<circle cx="21" cy="21" r="{r}" fill="none" stroke="{couleur}" stroke-width="6" '
+            f'stroke-dasharray="{pct:.3f} {100 - pct:.3f}" stroke-dashoffset="{-decalage:.3f}" '
+            f'transform="rotate(-90 21 21)"/>'
+        )
+        decalage += pct
+    couleur_centre = ROUGE if centre_rouge else "#101828"
+    elements.append(
+        '<text x="21" y="19.5" text-anchor="middle" font-size="3.2" fill="#667085">Cashflow</text>'
+        f'<text x="21" y="25.5" text-anchor="middle" font-size="5" font-weight="800" '
+        f'fill="{couleur_centre}">{html.escape(centre_valeur)}</text>'
     )
+    return '<svg viewBox="0 0 42 42" role="img">' + "".join(elements) + "</svg>"
 
-    fig.update_xaxes(fixedrange=True)
-    fig.update_yaxes(fixedrange=True)
 
-    st.plotly_chart(fig, use_container_width=True, config=CHART_CONFIG)
+def afficher_repartition_loyers(biens):
+    """Un camembert par bien : 100 % = le loyer, on en retire chaque charge ; le reste = cashflow.
+    Si les charges dépassent le loyer, l'anneau représente les charges et le déficit est signalé en rouge."""
+    cartes = []
+
+    for bien in biens:
+        loyer, charges, total_charges, cashflow, _ca, _prix, _rdt = calcul_bien(bien)
+        nom = html.escape(str(bien.get("nom") or "Bien"))
+
+        if loyer <= 0:
+            corps = '<div class="pie-empty">Renseigne le loyer de ce bien pour voir la répartition.</div>'
+            sous_titre = ""
+        else:
+            sous_titre = f'<div class="pie-sub">Loyer : {format_euro(loyer)} / mois</div>'
+            parts = [
+                (n, m, COULEURS_CHARGES.get(n, "#94a3b8"))
+                for n, m in charges.items() if m > 0
+            ]
+            deficit = cashflow < 0
+            if cashflow > 0:
+                parts.append(("Cashflow", cashflow, COULEURS_CHARGES["Cashflow"]))
+
+            total_anneau = total_charges if deficit else loyer
+            corps = donut_svg(parts, total_anneau, format_euro(cashflow), deficit)
+
+            for n, m, couleur in parts:
+                corps += (
+                    f'<div class="legend-row"><span class="legend-dot" style="background:{couleur}"></span>'
+                    f'<span class="legend-name">{html.escape(n)}</span>'
+                    f'<span class="legend-val">{format_euro(m)} · {m / loyer * 100:.0f} %</span></div>'
+                )
+
+            if deficit:
+                corps += (
+                    f'<div class="pie-alert">Charges = {total_charges / loyer * 100:.0f} % du loyer '
+                    f'· déficit de {format_euro(-cashflow)} / mois</div>'
+                )
+
+        cartes.append(f'<div class="pie-card"><div class="pie-title">{nom}</div>{sous_titre}{corps}</div>')
+
+    st.markdown('<div class="pie-strip">' + "".join(cartes) + "</div>", unsafe_allow_html=True)
+    st.caption("← Glisse vers la gauche pour voir les autres biens")
+
+
+def activer_clavier_numerique():
+    """Affiche le clavier numérique sur mobile pour les champs de montants."""
+    libelles = json.dumps([libelle for _cle, libelle in CHAMPS_MONTANTS])
+    components.html(
+        f"""<script>
+        const libelles = {libelles};
+        function patch() {{
+            try {{
+                window.parent.document.querySelectorAll('input').forEach(el => {{
+                    const l = el.getAttribute('aria-label');
+                    if (l && libelles.includes(l)) {{ el.setAttribute('inputmode', 'decimal'); }}
+                }});
+            }} catch (e) {{}}
+        }}
+        patch();
+        try {{
+            new MutationObserver(patch).observe(window.parent.document.body, {{childList: true, subtree: true}});
+        }} catch (e) {{}}
+        </script>""",
+        height=0,
+    )
 
 
 st.title("LMNP Cashflow")
@@ -600,18 +686,20 @@ if user is None:
     st.stop()
 
 
-if st.button("Déconnexion"):
-    logout()
-
 biens = load_properties(user.id)
 
 if len(biens) == 0:
     create_property(user.id, "Bien 1")
     st.rerun()
 
-if st.button("+ Ajouter un bien"):
-    create_property(user.id, f"Bien {len(biens) + 1}")
-    st.rerun()
+col_ajout, col_deco = st.columns(2)
+with col_ajout:
+    if st.button("＋ Ajouter un bien"):
+        create_property(user.id, f"Bien {len(biens) + 1}")
+        st.rerun()
+with col_deco:
+    if st.button("Déconnexion"):
+        logout()
 
 tab_names = []
 
@@ -662,13 +750,18 @@ if len(biens) > 1:
         st.markdown("### Ratio cashflow / prix d'achat")
         afficher_graphique_ratios(ratios_biens)
 
+        st.markdown("### Répartition du loyer par bien")
+        afficher_repartition_loyers(biens)
+
         st.markdown("### Cashflow mensuel par bien")
         afficher_graphique_cashflows(ratios_biens)
 
-        afficher_metric("Cashflow annuel", format_euro(total_cashflow * 12))
-        afficher_metric("Loyer mensuel", format_euro(total_loyer))
-        afficher_metric("Loyer annuel", format_euro(total_loyer * 12))
-        afficher_metric("Charges mensuelles", format_euro(total_charges))
+        afficher_metrics_grid([
+            ("Cashflow annuel", format_euro(total_cashflow * 12), total_cashflow < 0),
+            ("Loyer mensuel", format_euro(total_loyer), False),
+            ("Loyer annuel", format_euro(total_loyer * 12), False),
+            ("Charges mensuelles", format_euro(total_charges), False),
+        ])
 
         df_charges = pd.DataFrame({
             "Charge": list(charges_globales.keys()),
@@ -684,10 +777,18 @@ if len(biens) > 1:
                 df_charges,
                 names="Charge",
                 values="Montant",
-                hole=0.35
+                hole=0.35,
+                color="Charge",
+                color_discrete_map=COULEURS_CHARGES,
             )
-            fig_pie.update_layout(dragmode=False)
-            st.plotly_chart(fig_pie, use_container_width=True, config=CHART_CONFIG)
+            fig_pie.update_traces(textinfo="percent")
+            fig_pie.update_layout(
+                dragmode=False,
+                height=360,
+                margin=dict(l=10, r=10, t=10, b=10),
+                legend=dict(orientation="h", yanchor="top", y=-0.05, x=0.5, xanchor="center"),
+            )
+            st.plotly_chart(fig_pie, config=CHART_CONFIG)
 
             st.markdown("### Charges par catégorie")
 
@@ -695,12 +796,21 @@ if len(biens) > 1:
                 df_charges,
                 x="Charge",
                 y="Montant",
-                text="Montant"
+                text="Montant",
+                color="Charge",
+                color_discrete_map=COULEURS_CHARGES,
             )
-            fig_bar.update_layout(dragmode=False)
-            fig_bar.update_xaxes(fixedrange=True)
+            fig_bar.update_traces(texttemplate="%{text:.0f} €", textposition="outside", cliponaxis=False)
+            fig_bar.update_layout(
+                dragmode=False,
+                height=320,
+                margin=dict(l=10, r=10, t=20, b=20),
+                showlegend=False,
+                xaxis_title="",
+            )
+            fig_bar.update_xaxes(fixedrange=True, tickangle=-30, automargin=True)
             fig_bar.update_yaxes(fixedrange=True)
-            st.plotly_chart(fig_bar, use_container_width=True, config=CHART_CONFIG)
+            st.plotly_chart(fig_bar, config=CHART_CONFIG)
 
     tab_index = 1
 
@@ -791,3 +901,5 @@ with st.expander("Exporter mes données (sauvegarde personnelle)"):
         file_name="immopark_export.csv",
         mime="text/csv",
     )
+
+activer_clavier_numerique()
