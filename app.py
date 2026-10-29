@@ -1,10 +1,15 @@
+import json
+from urllib.parse import unquote
+
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from supabase import create_client, Client
 
-SESSION_DURATION_SECONDS = 3600
+COOKIE_NAME = "immopark_rt"
+COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 jours
 
 CHART_CONFIG = {
     "displayModeBar": False,
@@ -142,15 +147,159 @@ button {
 """, unsafe_allow_html=True)
 
 
-@st.cache_resource
-def init_supabase() -> Client:
-    return create_client(
-        st.secrets["SUPABASE_URL"],
-        st.secrets["SUPABASE_ANON_KEY"]
+# ---------------------------------------------------------------------------
+# Supabase : UN client PAR session navigateur (jamais partagé entre utilisateurs)
+# ---------------------------------------------------------------------------
+def get_client() -> Client:
+    if "sb" not in st.session_state:
+        st.session_state["sb"] = create_client(
+            st.secrets["SUPABASE_URL"],
+            st.secrets["SUPABASE_ANON_KEY"],
+        )
+    return st.session_state["sb"]
+
+
+def reset_client():
+    st.session_state.pop("sb", None)
+
+
+# ---------------------------------------------------------------------------
+# Persistance de la connexion : cookie navigateur (plus de jetons dans l'URL)
+# ---------------------------------------------------------------------------
+def write_cookie(value):
+    """Écrit (ou efface si value est None) le cookie du refresh token."""
+    name = json.dumps(COOKIE_NAME)
+    if value:
+        cookie_expr = (
+            f"{name} + '=' + encodeURIComponent({json.dumps(value)}) + "
+            f"'; path=/; max-age={COOKIE_MAX_AGE}; SameSite=Lax' + secure"
+        )
+    else:
+        cookie_expr = f"{name} + '=; path=/; max-age=0; SameSite=Lax' + secure"
+
+    components.html(
+        f"""<script>
+        try {{
+            const d = window.parent.document;
+            const secure = window.parent.location.protocol === 'https:' ? '; Secure' : '';
+            d.cookie = {cookie_expr};
+        }} catch (e) {{}}
+        </script>""",
+        height=0,
     )
 
 
-supabase = init_supabase()
+def restore_session_from_cookie(client):
+    if st.session_state.get("no_autologin"):
+        return None
+    raw = st.context.cookies.get(COOKIE_NAME)
+    if not raw:
+        return None
+    try:
+        resp = client.auth.refresh_session(unquote(raw))
+        return resp.session if resp else None
+    except Exception:
+        return None
+
+
+def get_current_user():
+    client = get_client()
+    try:
+        session = client.auth.get_session()  # rafraîchit si le jeton a expiré
+    except Exception:
+        session = None
+
+    if session is None:
+        session = restore_session_from_cookie(client)
+
+    if session is None:
+        return None
+
+    # Réécrit le cookie à chaque exécution : garde le refresh token à jour
+    # même si Supabase l'a renouvelé (rotation).
+    write_cookie(session.refresh_token)
+    return session.user
+
+
+def logout():
+    try:
+        get_client().auth.sign_out({"scope": "local"})  # cet appareil uniquement
+    except Exception:
+        pass
+    reset_client()
+    st.session_state["no_autologin"] = True
+    st.session_state["clear_cookie"] = True
+    st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Accès aux données
+# ---------------------------------------------------------------------------
+def load_properties(user_id):
+    result = (
+        get_client().table("properties")
+        .select("*")
+        .eq("user_id", user_id)
+        .order("created_at")
+        .execute()
+    )
+    return result.data or []
+
+
+def create_property(user_id, nom):
+    get_client().table("properties").insert(
+        default_property(user_id, nom)
+    ).execute()
+
+
+def update_property(property_id, user_id, values):
+    """Retourne True seulement si une ligne a réellement été modifiée."""
+    result = (
+        get_client().table("properties")
+        .update(values)
+        .eq("id", property_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    return bool(result.data)
+
+
+CHAMPS_MONTANTS = [
+    ("prix_achat_total", "Prix d'achat total avec travaux"),
+    ("loyer", "Loyer perçu mensuel"),
+    ("credit", "Crédit mensuel"),
+    ("assurance", "Assurance mensuelle"),
+    ("taxe", "Taxe foncière annuelle"),
+    ("copro", "Charges de copropriété mensuelles"),
+    ("electricite", "Électricité mensuelle"),
+    ("gaz", "Gaz mensuel"),
+    ("imprevu", "Imprévu mensuel"),
+]
+
+
+def parse_montant(texte):
+    """'1 200,50 €' -> 1200.5 ; vide -> 0.0 ; invalide -> ValueError (jamais 0 silencieux)."""
+    s = str(texte or "").strip()
+    if s == "":
+        return 0.0
+    for ch in (" ", "\u00a0", "\u202f", "€"):
+        s = s.replace(ch, "")
+    s = s.replace(",", ".")
+    valeur = float(s)  # lève ValueError si invalide
+    if valeur < 0:
+        raise ValueError("négatif")
+    return valeur
+
+
+def texte_montant(valeur):
+    """Affichage propre dans le champ : 1200.0 -> '1200', 0 -> ''."""
+    try:
+        f = float(valeur)
+    except (TypeError, ValueError):
+        return ""
+    if f == 0:
+        return ""
+    return str(int(f)) if f.is_integer() else str(f)
 
 
 def to_float(value):
@@ -353,72 +502,15 @@ def afficher_graphique_cashflows(ratios_biens):
     st.plotly_chart(fig, use_container_width=True, config=CHART_CONFIG)
 
 
-def save_session(session):
-    st.query_params["access_token"] = session.access_token
-    st.query_params["refresh_token"] = session.refresh_token
-
-
-def clear_session():
-    st.query_params.clear()
-
-
-def get_current_user():
-    access_token = st.query_params.get("access_token")
-    refresh_token = st.query_params.get("refresh_token")
-
-    if not access_token or not refresh_token:
-        return None
-
-    try:
-        supabase.auth.set_session(access_token, refresh_token)
-        user_response = supabase.auth.get_user()
-        return user_response.user
-    except Exception:
-        clear_session()
-        return None
-
-
-def create_profile_if_needed(user):
-    existing = (
-        supabase.table("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .execute()
-    )
-
-    if not existing.data:
-        supabase.table("profiles").insert({
-            "id": user.id,
-            "email": user.email
-        }).execute()
-
-
-def load_properties(user_id):
-    result = (
-        supabase.table("properties")
-        .select("*")
-        .eq("user_id", user_id)
-        .order("created_at")
-        .execute()
-    )
-    return result.data or []
-
-
-def create_property(user_id, nom):
-    supabase.table("properties").insert(
-        default_property(user_id, nom)
-    ).execute()
-
-
-def update_property(property_id, values):
-    supabase.table("properties").update(values).eq("id", property_id).execute()
-
-
 st.title("LMNP Cashflow")
 
 user = get_current_user()
 
 if user is None:
+    if st.session_state.pop("clear_cookie", False):
+        write_cookie(None)
+
+    client = get_client()
     mode = st.radio(
         "Accès",
         ["Connexion", "Créer un compte", "Mot de passe oublié"],
@@ -427,7 +519,7 @@ if user is None:
 
     if mode == "Créer un compte":
         email = st.text_input("Email")
-        password = st.text_input("Mot de passe", type="password")
+        password = st.text_input("Mot de passe (8 caractères minimum)", type="password")
         password_confirm = st.text_input("Confirmer le mot de passe", type="password")
 
         if st.button("Créer mon compte"):
@@ -435,25 +527,24 @@ if user is None:
 
             if not email or "@" not in email:
                 st.error("Email invalide.")
-            elif not password:
-                st.error("Mot de passe obligatoire.")
+            elif len(password) < 8:
+                st.error("Mot de passe trop court (8 caractères minimum).")
             elif password != password_confirm:
                 st.error("Les mots de passe ne correspondent pas.")
             else:
                 try:
-                    response = supabase.auth.sign_up({
+                    response = client.auth.sign_up({
                         "email": email,
                         "password": password
                     })
 
                     if response.session:
-                        save_session(response.session)
-                        create_profile_if_needed(response.user)
-                        create_property(response.user.id, "Bien 1")
+                        st.session_state.pop("no_autologin", None)
                         st.rerun()
                     else:
                         st.success(
-                            "Compte créé. Vérifie ton email si Supabase demande une confirmation."
+                            "Compte créé. Clique sur le lien reçu par email "
+                            "pour confirmer, puis connecte-toi."
                         )
                 except Exception as e:
                     st.error(f"Erreur création compte : {e}")
@@ -466,49 +557,51 @@ if user is None:
             email = email.strip().lower()
 
             try:
-                response = supabase.auth.sign_in_with_password({
+                client.auth.sign_in_with_password({
                     "email": email,
                     "password": password
                 })
-
-                save_session(response.session)
-                create_profile_if_needed(response.user)
-
-                properties = load_properties(response.user.id)
-                if len(properties) == 0:
-                    create_property(response.user.id, "Bien 1")
-
+                st.session_state.pop("no_autologin", None)
                 st.rerun()
-
             except Exception:
                 st.error("Email ou mot de passe incorrect.")
 
     elif mode == "Mot de passe oublié":
+        st.caption("Étape 1 : reçois un code par email.")
         email = st.text_input("Email du compte")
 
-        if st.button("Recevoir un email de réinitialisation"):
-            email = email.strip().lower()
-
+        if st.button("Recevoir un code"):
             try:
-                supabase.auth.reset_password_email(email)
-                st.success("Email de réinitialisation envoyé si le compte existe.")
+                client.auth.reset_password_for_email(email.strip().lower())
+                st.success("Si le compte existe, un code vient d'être envoyé.")
             except Exception as e:
                 st.error(f"Erreur : {e}")
+
+        st.caption("Étape 2 : saisis le code et ton nouveau mot de passe.")
+        code = st.text_input("Code reçu par email")
+        new_password = st.text_input("Nouveau mot de passe (8 caractères minimum)", type="password")
+
+        if st.button("Changer le mot de passe"):
+            if len(new_password) < 8:
+                st.error("Mot de passe trop court (8 caractères minimum).")
+            else:
+                try:
+                    client.auth.verify_otp({
+                        "email": email.strip().lower(),
+                        "token": code.strip(),
+                        "type": "recovery",
+                    })
+                    client.auth.update_user({"password": new_password})
+                    st.session_state.pop("no_autologin", None)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Code invalide ou expiré : {e}")
 
     st.stop()
 
 
-create_profile_if_needed(user)
-
-st.markdown('<div class="top-right-button">', unsafe_allow_html=True)
 if st.button("Déconnexion"):
-    try:
-        supabase.auth.sign_out()
-    except Exception:
-        pass
-    clear_session()
-    st.rerun()
-st.markdown('</div>', unsafe_allow_html=True)
+    logout()
 
 biens = load_properties(user.id)
 
@@ -516,11 +609,9 @@ if len(biens) == 0:
     create_property(user.id, "Bien 1")
     st.rerun()
 
-st.markdown('<div class="bottom-plus">', unsafe_allow_html=True)
-if st.button("+"):
+if st.button("+ Ajouter un bien"):
     create_property(user.id, f"Bien {len(biens) + 1}")
     st.rerun()
-st.markdown('</div>', unsafe_allow_html=True)
 
 tab_names = []
 
@@ -631,80 +722,31 @@ for i, bien in enumerate(biens):
         if prix_achat_total > 0:
             afficher_metric("Cashflow annuel / prix total", f"{rendement_cashflow:.2f} %")
 
-        nouveau_nom = st.text_input(
-            "Nom du bien",
-            value=bien.get("nom", f"Bien {i + 1}"),
-            key=f"nom_{bien['id']}"
-        )
+        # Formulaire : rien n'est envoyé (ni perdu) tant que tu n'appuies pas sur Sauvegarder
+        with st.form(key=f"form_{bien['id']}"):
+            nouveau_nom = st.text_input(
+                "Nom du bien",
+                value=bien.get("nom", f"Bien {i + 1}"),
+                key=f"nom_{bien['id']}"
+            )
 
-        prix_achat_input = st.text_input(
-            "Prix d'achat total avec travaux",
-            value=str(bien.get("prix_achat_total") or ""),
-            placeholder="Montant total en €",
-            key=f"prix_achat_total_{bien['id']}"
-        )
+            saisies = {}
+            for cle, libelle in CHAMPS_MONTANTS:
+                if cle == "loyer":
+                    st.markdown("### Revenus")
+                elif cle == "credit":
+                    st.markdown("### Charges principales")
+                elif cle == "electricite":
+                    st.markdown("### Charges optionnelles")
 
-        st.markdown("### Revenus")
+                saisies[cle] = st.text_input(
+                    libelle,
+                    value=texte_montant(bien.get(cle)),
+                    placeholder="Montant en €",
+                    key=f"{cle}_{bien['id']}"
+                )
 
-        loyer_input = st.text_input(
-            "Loyer perçu mensuel",
-            value=str(bien.get("loyer") or ""),
-            placeholder="Montant en €",
-            key=f"loyer_{bien['id']}"
-        )
-
-        st.markdown("### Charges principales")
-
-        credit_input = st.text_input(
-            "Crédit mensuel",
-            value=str(bien.get("credit") or ""),
-            placeholder="Montant en €",
-            key=f"credit_{bien['id']}"
-        )
-
-        assurance_input = st.text_input(
-            "Assurance mensuelle",
-            value=str(bien.get("assurance") or ""),
-            placeholder="Montant en €",
-            key=f"assurance_{bien['id']}"
-        )
-
-        taxe_input = st.text_input(
-            "Taxe foncière annuelle",
-            value=str(bien.get("taxe") or ""),
-            placeholder="Montant annuel en €",
-            key=f"taxe_{bien['id']}"
-        )
-
-        copro_input = st.text_input(
-            "Charges de copropriété mensuelles",
-            value=str(bien.get("copro") or ""),
-            placeholder="Montant en €",
-            key=f"copro_{bien['id']}"
-        )
-
-        st.markdown("### Charges optionnelles")
-
-        electricite_input = st.text_input(
-            "Électricité mensuelle",
-            value=str(bien.get("electricite") or ""),
-            placeholder="Montant en €",
-            key=f"electricite_{bien['id']}"
-        )
-
-        gaz_input = st.text_input(
-            "Gaz mensuel",
-            value=str(bien.get("gaz") or ""),
-            placeholder="Montant en €",
-            key=f"gaz_{bien['id']}"
-        )
-
-        imprevu_input = st.text_input(
-            "Imprévu mensuel",
-            value=str(bien.get("imprevu") or ""),
-            placeholder="Montant en €",
-            key=f"imprevu_{bien['id']}"
-        )
+            envoye = st.form_submit_button("💾 Sauvegarder")
 
         st.caption(
             f"Charges mensuelles : {format_euro(total_charges)} | "
@@ -712,22 +754,40 @@ for i, bien in enumerate(biens):
             f"Cashflow annuel : {format_euro(cashflow_annuel)}"
         )
 
-        if st.button("💾 Sauvegarder", key=f"save_{bien['id']}"):
-            update_property(
-                bien["id"],
-                {
-                    "nom": nouveau_nom if nouveau_nom else f"Bien {i + 1}",
-                    "prix_achat_total": to_float(prix_achat_input),
-                    "loyer": to_float(loyer_input),
-                    "credit": to_float(credit_input),
-                    "assurance": to_float(assurance_input),
-                    "taxe": to_float(taxe_input),
-                    "copro": to_float(copro_input),
-                    "electricite": to_float(electricite_input),
-                    "gaz": to_float(gaz_input),
-                    "imprevu": to_float(imprevu_input),
-                }
-            )
+        if envoye:
+            valeurs, erreurs = {}, []
+            for cle, libelle in CHAMPS_MONTANTS:
+                try:
+                    valeurs[cle] = parse_montant(saisies[cle])
+                except ValueError:
+                    erreurs.append(libelle)
 
-            st.success("Bien sauvegardé.")
-            st.rerun()
+            if erreurs:
+                st.error(
+                    "Sauvegarde annulée, montant invalide pour : "
+                    + ", ".join(erreurs)
+                    + ". Exemple valide : 1200 ou 1 200,50"
+                )
+            else:
+                valeurs["nom"] = nouveau_nom.strip() or f"Bien {i + 1}"
+                try:
+                    ok = update_property(bien["id"], user.id, valeurs)
+                except Exception as e:
+                    ok = False
+                    st.error(f"Erreur de sauvegarde : {e}")
+
+                if ok:
+                    st.success("Bien sauvegardé.")
+                    st.rerun()
+                else:
+                    st.error("La sauvegarde n'a pas été confirmée par la base. Réessaie.")
+
+st.divider()
+with st.expander("Exporter mes données (sauvegarde personnelle)"):
+    df_export = pd.DataFrame(biens).drop(columns=["user_id"], errors="ignore")
+    st.download_button(
+        "Télécharger en CSV (compatible Excel)",
+        data=df_export.to_csv(index=False, sep=";", decimal=",").encode("utf-8-sig"),
+        file_name="immopark_export.csv",
+        mime="text/csv",
+    )
